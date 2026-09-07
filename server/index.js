@@ -4,6 +4,7 @@ const fs = require("fs");
 const http = require("http");
 const path = require("path");
 const vm = require("vm");
+const crypto = require("crypto");
 const express = require("express");
 const { Server } = require("socket.io");
 
@@ -39,6 +40,38 @@ function safeName(value) {
   const name = String(value || "玩家").trim().replace(/[<>]/g, "").slice(0, 12);
   return name || "玩家";
 }
+function safeToken(value) {
+  const token = String(value || "").trim();
+  return /^[a-zA-Z0-9_-]{24,128}$/.test(token) ? token : crypto.randomBytes(24).toString("hex");
+}
+function matchSettings(input) {
+  const matchType = input && input.matchType === "time" ? "time" : "rounds";
+  const maxRounds = [5, 10, 20, 30].includes(Number(input && input.maxRounds)) ? Number(input.maxRounds) : 20;
+  const durationMinutes = [10, 20, 30].includes(Number(input && input.durationMinutes)) ? Number(input.durationMinutes) : 20;
+  return { matchType, maxRounds, durationMinutes };
+}
+function createPlayer(name, token, socket) {
+  return {
+    id: crypto.randomUUID(), reconnectToken: safeToken(token), socketId: socket.id, connected: true, disconnectDeadline: 0, disconnectTimer: null,
+    name: safeName(name), score: 0, hand: [], folded: false, waiting: false, stake: 0, winCap: 1, usedBottom: false, hasRaised: false,
+    hasBetThisRound: false, hasTakenTurn: false, acted: false, bluffUsed: false, timeoutCount: 0, autoManaged: false
+  };
+}
+function clearDisconnectTimer(player) {
+  if (player.disconnectTimer) clearTimeout(player.disconnectTimer);
+  player.disconnectTimer = null;
+}
+function bindPlayer(room, player, socket) {
+  clearDisconnectTimer(player);
+  player.socketId = socket.id;
+  player.connected = true;
+  player.disconnectDeadline = 0;
+  player.autoManaged = false;
+  player.timeoutCount = 0;
+  socket.data.roomCode = room.code;
+  socket.data.playerId = player.id;
+  socket.join(room.code);
+}
 function active(room) { return room.players.filter((p) => !p.folded); }
 function betting(room) { return active(room).filter((p) => !p.waiting); }
 function addEvent(room, text) {
@@ -52,6 +85,10 @@ function handText(hand) { return ENGINE.handDesc(ENGINE.evaluate(hand[0], hand[1
 function clearTimer(room) { if (room.timer) clearTimeout(room.timer); room.timer = null; room.deadline = 0; }
 function clearNextTimer(room) { if (room.nextTimer) clearTimeout(room.nextTimer); room.nextTimer = null; room.nextDeadline = 0; }
 function clearRubTimer(room) { if (room.rubTimer) clearTimeout(room.rubTimer); room.rubTimer = null; }
+function clearRoom(room) {
+  clearTimer(room); clearNextTimer(room); clearRubTimer(room);
+  room.players.forEach(clearDisconnectTimer);
+}
 function handStrength(hand) {
   const ev = ENGINE.evaluate(hand[0], hand[1]);
   return ev.type === "special" ? 100 + (15 - ev.level) : ev.point * 10 + ev.mianzi;
@@ -95,6 +132,11 @@ function armTimer(room) {
   if (room.phase !== "playing" || !room.turnId) return;
   const player = room.players.find((p) => p.id === room.turnId);
   if (!player) return;
+  if (!player.connected && player.disconnectDeadline > Date.now()) {
+    room.deadline = player.disconnectDeadline;
+    broadcast(room);
+    return;
+  }
   const auto = player.autoManaged;
   const duration = auto ? 5000 + Math.floor(Math.random() * 3001) : 30000;
   room.deadline = Date.now() + duration;
@@ -122,6 +164,19 @@ function nextPlayer(room, fromId, list) {
   }
   return candidates[0];
 }
+function matchComplete(room) {
+  if (room.matchType === "time") return room.endAt > 0 && Date.now() >= room.endAt;
+  return room.gameNo >= room.maxRounds;
+}
+function finishMatch(room) {
+  clearNextTimer(room);
+  room.phase = "finished";
+  room.deadline = 0;
+  room.nextDeadline = 0;
+  const ranking = room.players.slice().sort((a, b) => b.score - a.score).map((p, i) => (i + 1) + ". " + p.name + " " + p.score + "分").join("；");
+  addEvent(room, "牌局结束，最终排名：" + ranking);
+  broadcast(room);
+}
 function settle(room, contenders) {
   clearTimer(room);
   room.phase = "showdown";
@@ -131,7 +186,7 @@ function settle(room, contenders) {
     room.winnerId = null;
     room.dealer = (room.dealer + 1) % room.players.length;
     addEvent(room, "最后一家未达到普通8点门槛：本局无人获胜，公池 " + room.pot + " 积分结转下一局。");
-    return scheduleNextRound(room);
+    return matchComplete(room) ? finishMatch(room) : scheduleNextRound(room);
   }
   let winner = players[0];
   let tie = false;
@@ -153,13 +208,14 @@ function settle(room, contenders) {
     room.dealer = room.players.indexOf(winner);
     addEvent(room, winner.name + " 获胜，赢得 " + prize + " 积分" + (room.pot ? "，公池结转 " + room.pot + " 积分。" : "！"));
   }
-  scheduleNextRound(room);
+  if (matchComplete(room)) finishMatch(room); else scheduleNextRound(room);
 }
 function scheduleNextRound(room) {
   clearNextTimer(room);
   room.nextDeadline = Date.now() + 10000;
   room.nextTimer = setTimeout(() => {
     if (!rooms.has(room.code) || room.phase !== "showdown") return;
+    if (matchComplete(room)) return finishMatch(room);
     if (room.players.length < 2) {
       room.phase = "lobby";
       room.nextDeadline = 0;
@@ -257,6 +313,19 @@ function beginBetting(room) {
   armTimer(room);
   broadcast(room);
 }
+function startMatch(room) {
+  clearRoom(room);
+  room.gameNo = 0;
+  room.round = 1;
+  room.pot = 0;
+  room.dealer = 0;
+  room.events = [];
+  room.matchStartedAt = Date.now();
+  room.endAt = room.matchType === "time" ? room.matchStartedAt + room.durationMinutes * 60 * 1000 : 0;
+  room.players.forEach((p) => { p.score = 0; p.timeoutCount = 0; p.autoManaged = false; });
+  addEvent(room, "牌局开始：" + (room.matchType === "time" ? room.durationMinutes + "分钟时长模式。" : room.maxRounds + "局模式。"));
+  startRound(room);
+}
 function startRound(room) {
   clearNextTimer(room);
   clearRubTimer(room);
@@ -281,11 +350,12 @@ function startRound(room) {
   room.rubTimer = setTimeout(() => beginBetting(room), 30000);
 }
 function view(room, viewerId) {
-  const isShowdown = room.phase === "showdown";
+  const isShowdown = room.phase === "showdown" || room.phase === "finished";
   return {
     code: room.code, mode: room.mode, phase: room.phase, round: room.round, gameNo: room.gameNo, pot: room.pot, deadline: room.deadline, nextDeadline: room.nextDeadline || 0,
+    selfId: viewerId, matchType: room.matchType, maxRounds: room.maxRounds, durationMinutes: room.durationMinutes, endAt: room.endAt || 0,
     hostId: room.hostId, turnId: room.turnId, winnerId: room.winnerId, events: room.events,
-    players: room.players.map((p) => ({ id: p.id, name: p.name, score: p.score, folded: p.folded, waiting: p.waiting, rubReady: !!p.rubReady, autoManaged: p.autoManaged,
+    players: room.players.map((p) => ({ id: p.id, name: p.name, score: p.score, folded: p.folded, waiting: p.waiting, rubReady: !!p.rubReady, autoManaged: p.autoManaged, connected: p.connected, disconnectDeadline: p.disconnectDeadline || 0,
       hand: (isShowdown || p.id === viewerId) ? p.hand : null,
       handText: isShowdown ? handText(p.hand) : null
     })),
@@ -295,39 +365,105 @@ function view(room, viewerId) {
     })() : null
   };
 }
-function broadcast(room) { room.players.forEach((p) => io.to(p.id).emit("room_state", view(room, p.id))); }
+function broadcast(room) { room.players.forEach((p) => { if (p.connected && p.socketId) io.to(p.socketId).emit("room_state", view(room, p.id)); }); }
 function getRoomFor(socket) { return rooms.get(socket.data.roomCode); }
+function getPlayerForSocket(room, socket) {
+  return room && room.players.find((p) => p.id === socket.data.playerId && p.socketId === socket.id);
+}
+function transferHost(room) {
+  if (room.players.some((p) => p.id === room.hostId && p.connected)) return;
+  const nextHost = room.players.find((p) => p.connected) || room.players[0];
+  room.hostId = nextHost ? nextHost.id : null;
+}
+function expireDisconnect(roomCode, playerId) {
+  const room = rooms.get(roomCode);
+  const player = room && room.players.find((p) => p.id === playerId);
+  if (!room || !player || player.connected) return;
+  player.disconnectTimer = null;
+  player.disconnectDeadline = 0;
+  if (room.phase === "lobby" || room.phase === "finished") {
+    room.players = room.players.filter((p) => p.id !== player.id);
+    addEvent(room, player.name + " 断线超过60秒，已离开房间。");
+  } else {
+    player.autoManaged = true;
+    addEvent(room, player.name + " 断线超过60秒，系统开启托管。");
+  }
+  if (!room.players.length || !room.players.some((p) => p.connected)) {
+    clearRoom(room);
+    rooms.delete(room.code);
+    return;
+  }
+  transferHost(room);
+  if (room.phase === "playing" && room.turnId === player.id) armTimer(room);
+  broadcast(room);
+}
+function markDisconnected(room, player) {
+  player.connected = false;
+  player.socketId = null;
+  player.disconnectDeadline = Date.now() + 60000;
+  clearDisconnectTimer(player);
+  player.disconnectTimer = setTimeout(() => expireDisconnect(room.code, player.id), 60000);
+  addEvent(room, player.name + " 已断线，座位保留60秒等待重连。");
+  if (room.phase === "playing" && room.turnId === player.id) {
+    clearTimer(room);
+    room.deadline = player.disconnectDeadline;
+  }
+  broadcast(room);
+}
 
 io.on("connection", (socket) => {
-  socket.on("room:create", ({ name, mode }, done) => {
+  socket.on("room:create", ({ name, mode, token, matchType, maxRounds, durationMinutes }, done) => {
+    done = typeof done === "function" ? done : function () {};
     const code = roomCode();
-    const room = { code, mode: ["classic", "double", "four"].includes(mode) ? mode : "classic", hostId: socket.id, players: [], phase: "lobby", round: 1, gameNo: 0, bettingStage: "opening", pot: 0, dealer: 0, events: [], timer: null, deadline: 0, nextTimer: null, nextDeadline: 0, rubTimer: null };
+    const settings = matchSettings({ matchType, maxRounds, durationMinutes });
+    const room = { code, mode: ["classic", "double", "four"].includes(mode) ? mode : "classic", hostId: null, players: [], phase: "lobby", round: 1, gameNo: 0, bettingStage: "opening", pot: 0, dealer: 0, events: [], timer: null, deadline: 0, nextTimer: null, nextDeadline: 0, rubTimer: null, matchStartedAt: 0, endAt: 0, ...settings };
     rooms.set(code, room);
-    const player = { id: socket.id, name: safeName(name), score: 0, hand: [], folded: false, waiting: false, stake: 0, winCap: 1, usedBottom: false, hasRaised: false, hasBetThisRound: false, hasTakenTurn: false, acted: false, bluffUsed: false, timeoutCount: 0, autoManaged: false };
-    room.players.push(player); socket.join(code); socket.data.roomCode = code;
+    const player = createPlayer(name, token, socket);
+    room.hostId = player.id;
+    room.players.push(player); bindPlayer(room, player, socket);
     addEvent(room, player.name + " 创建了房间。"); broadcast(room); done({ ok: true, code });
   });
-  socket.on("room:join", ({ code, name }, done) => {
+  socket.on("room:join", ({ code, name, token }, done) => {
+    done = typeof done === "function" ? done : function () {};
     const room = rooms.get(String(code || "").toUpperCase());
     if (!room || room.phase !== "lobby") return done({ ok: false, error: "房间不存在或已经开局。" });
+    const existing = room.players.find((p) => p.reconnectToken === String(token || ""));
+    if (existing) {
+      bindPlayer(room, existing, socket);
+      addEvent(room, existing.name + " 已恢复房间连接。"); broadcast(room);
+      return done({ ok: true, code: room.code, resumed: true });
+    }
     if (room.players.length >= 8) return done({ ok: false, error: "房间已满（最多 8 人）。" });
-    const player = { id: socket.id, name: safeName(name), score: 0, hand: [], folded: false, waiting: false, stake: 0, winCap: 1, usedBottom: false, hasRaised: false, hasBetThisRound: false, hasTakenTurn: false, acted: false, bluffUsed: false, timeoutCount: 0, autoManaged: false };
-    room.players.push(player); socket.join(room.code); socket.data.roomCode = room.code;
+    const player = createPlayer(name, token, socket);
+    room.players.push(player); bindPlayer(room, player, socket);
     addEvent(room, player.name + " 加入了房间。"); broadcast(room); done({ ok: true, code: room.code });
+  });
+  socket.on("room:resume", ({ code, token }, done) => {
+    done = typeof done === "function" ? done : function () {};
+    const room = rooms.get(String(code || "").toUpperCase());
+    const player = room && room.players.find((p) => p.reconnectToken === String(token || ""));
+    if (!room || !player) return done({ ok: false, error: "原房间已结束或恢复身份已失效。" });
+    bindPlayer(room, player, socket);
+    addEvent(room, player.name + " 已重新连接。");
+    if (room.phase === "playing" && room.turnId === player.id) armTimer(room); else broadcast(room);
+    done({ ok: true, code: room.code, resumed: true });
   });
   socket.on("game:start", (_payload, done) => {
     done = typeof done === "function" ? done : function () {};
     const room = getRoomFor(socket);
-    if (!room || room.hostId !== socket.id) return done({ ok: false, error: "只有房主可以开始。" });
+    const player = getPlayerForSocket(room, socket);
+    if (!room || !player || room.hostId !== player.id) return done({ ok: false, error: "只有房主可以开始。" });
+    if (room.phase !== "lobby" && room.phase !== "finished") return done({ ok: false, error: "牌局已经开始。" });
     if (room.players.length < 2) return done({ ok: false, error: "至少需要 2 名玩家。" });
+    if (room.players.some((p) => !p.connected)) return done({ ok: false, error: "请等待所有玩家重新连接后再开始。" });
     if (room.mode === "four" && room.players.length !== 4) return done({ ok: false, error: "经典四人需要 4 名玩家全部加入后才能开始。" });
-    startRound(room); done({ ok: true });
+    startMatch(room); done({ ok: true });
   });
   socket.on("game:action", ({ action }, done) => {
     done = typeof done === "function" ? done : function () {};
     const room = getRoomFor(socket);
-    const player = room && room.players.find((p) => p.id === socket.id);
-    if (!room || !player || room.turnId !== socket.id) return done({ ok: false, error: "现在不是你的行动时间。" });
+    const player = getPlayerForSocket(room, socket);
+    if (!room || !player || room.turnId !== player.id) return done({ ok: false, error: "现在不是你的行动时间。" });
     if (!legalActions(room, player)[action]) return done({ ok: false, error: "该操作不符合当前规则。" });
     applyAction(room, player, action, false);
     done({ ok: true });
@@ -335,7 +471,7 @@ io.on("connection", (socket) => {
   socket.on("game:rub_ready", (_payload, done) => {
     done = typeof done === "function" ? done : function () {};
     const room = getRoomFor(socket);
-    const player = room && room.players.find((p) => p.id === socket.id);
+    const player = getPlayerForSocket(room, socket);
     if (!room || !player || room.phase !== "rubbing") return done({ ok: false, error: "当前不在搓牌阶段。" });
     player.rubReady = true;
     addEvent(room, player.name + " 已完成搓牌。");
@@ -345,16 +481,16 @@ io.on("connection", (socket) => {
   socket.on("game:next", (_payload, done) => {
     done = typeof done === "function" ? done : function () {};
     const room = getRoomFor(socket);
-    if (!room || room.hostId !== socket.id || room.phase !== "showdown") return done({ ok: false, error: "只有房主可开启下一局。" });
+    const player = getPlayerForSocket(room, socket);
+    if (!room || !player || room.hostId !== player.id || room.phase !== "showdown") return done({ ok: false, error: "只有房主可开启下一局。" });
+    if (matchComplete(room)) return done({ ok: false, error: "本场牌局已经结束。" });
     clearNextTimer(room); startRound(room); done({ ok: true });
   });
   socket.on("disconnect", () => {
     const room = getRoomFor(socket);
-    if (!room) return;
-    if (room.phase === "lobby") room.players = room.players.filter((p) => p.id !== socket.id);
-    else { const p = room.players.find((x) => x.id === socket.id); if (p) p.folded = true; maybeFinish(room); }
-    if (!room.players.length) { clearTimer(room); clearNextTimer(room); clearRubTimer(room); rooms.delete(room.code); }
-    else { if (room.hostId === socket.id) room.hostId = room.players[0].id; broadcast(room); }
+    const player = getPlayerForSocket(room, socket);
+    if (!room || !player) return;
+    markDisconnected(room, player);
   });
 });
 

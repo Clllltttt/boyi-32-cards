@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>32张 · 联机原型</title>
-  <link rel="stylesheet" href="css/online.css?v=20260906-synced-rules">
+  <link rel="stylesheet" href="css/online.css?v=20260907-room-session">
 </head>
 <body>
   <main class="online-shell">
@@ -12,6 +12,19 @@
     <section id="lobby" class="panel lobby game-hall">
       <div class="hall-welcome"><span class="online-dot"></span><b>经典单机，或和朋友一起开局</b><small>房间最多 8 人 · 虚拟积分</small></div>
       <label class="nickname">你的昵称<input id="name" maxlength="12" placeholder="例如：小林"></label>
+      <section class="match-setup" aria-label="联机牌局设置">
+        <div class="match-setup-row"><b>牌局模式</b><div class="match-switch" id="match-type">
+          <button type="button" class="selected" data-match-type="rounds">局数模式</button>
+          <button type="button" data-match-type="time">时长模式</button>
+        </div></div>
+        <div class="match-setup-row" id="online-round-settings"><b>局数</b><div class="match-options">
+          <button type="button" data-rounds="5">5局</button><button type="button" data-rounds="10">10局</button><button type="button" class="selected" data-rounds="20">20局</button><button type="button" data-rounds="30">30局</button>
+        </div></div>
+        <div class="match-setup-row hidden" id="online-time-settings"><b>时长</b><div class="match-options">
+          <button type="button" data-minutes="10">10分钟</button><button type="button" class="selected" data-minutes="20">20分钟</button><button type="button" data-minutes="30">30分钟</button>
+        </div></div>
+        <small>设置仅由房主创建房间时确定，加入者可在房间内查看。</small>
+      </section>
       <div class="mode-grid">
         <a href="/" class="mode-card mode-hero solo-entry" aria-label="进入32张经典单机版">
           <span class="mode-kicker">单机人机对战</span><h1>32张经典</h1><p>两张定胜负，立即开始单机</p><span class="solo-cta">单机开始 ›</span>
@@ -30,7 +43,7 @@
       <div id="notice" class="notice"></div>
     </section>
     <section id="room" class="hidden">
-      <div class="room-bar panel"><div>房间码 <strong id="room-code">----</strong><span id="phase" class="tag">等待玩家</span></div><button id="start" class="hidden">房主开始</button><button id="next" class="hidden">下一局</button></div>
+      <div class="room-bar panel"><div>房间码 <strong id="room-code">----</strong><span id="phase" class="tag">等待玩家</span><small id="match-summary" class="match-summary"></small></div><button id="start" class="hidden">房主开始</button><button id="next" class="hidden">下一局</button></div>
       <div class="board">
         <section class="panel table-panel"><div class="pot"><span>公池</span><b id="pot">0</b><small id="turn">等待开局</small></div><div id="players" class="players"></div><div id="actions" class="actions"></div></section>
         <aside class="panel log-panel"><h2>对局记录</h2><div id="events"></div></aside>
@@ -50,6 +63,6 @@
     </div>
   </div>
   <script src="/socket.io/socket.io.js"></script>
-  <script src="js/online.js?v=20260906-synced-rules"></script>
+  <script src="js/online.js?v=20260907-room-session"></script>
 </body>
 </html>

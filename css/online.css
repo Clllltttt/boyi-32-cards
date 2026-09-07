@@ -19,6 +19,11 @@ body{margin:0;min-height:100vh;background:radial-gradient(circle at 30% 0,#7984e
 .nickname{display:flex;align-items:center;gap:9px;margin:0 5px 11px;color:#eaf0ff;font-size:12px;font-weight:700}
 .nickname input{width:145px;border:1px solid rgba(255,255,255,.42);border-radius:999px;background:rgba(29,29,104,.28);padding:7px 11px;color:#fff;font-size:12px;outline:0}
 .nickname input::placeholder{color:#d5d9ff}
+.match-setup{margin:0 5px 12px;padding:10px 12px;border:1px solid rgba(255,255,255,.24);border-radius:12px;background:rgba(30,27,105,.22)}
+.match-setup-row{display:flex;align-items:center;gap:10px;margin:5px 0}.match-setup-row>b{width:58px;color:#eef1ff;font-size:12px}
+.match-switch,.match-options{display:flex;flex:1;gap:6px}.match-setup button{flex:1;border:1px solid rgba(255,255,255,.28);border-radius:8px;padding:7px 8px;background:rgba(255,255,255,.09);color:#e8ebff;font-size:12px;box-shadow:none}
+.match-setup button.selected{border-color:#ffe873;background:#fff2a5;color:#494073;box-shadow:0 2px 7px rgba(31,24,97,.25)}
+.match-setup>small{display:block;margin-top:7px;color:#d6dcff;font-size:10px;text-align:right}
 .mode-grid{display:grid;grid-template-columns:1.12fr .88fr;grid-template-rows:1fr 1fr;gap:12px}
 .mode-card{position:relative;overflow:hidden;display:block;border:0;border-radius:11px;min-height:177px;padding:17px 19px;text-align:left;text-decoration:none;cursor:pointer;box-shadow:0 5px 11px rgba(25,20,89,.35),inset 0 1px rgba(255,255,255,.42);transition:transform .16s ease,filter .16s ease,box-shadow .16s ease}
 .mode-card:hover{transform:translateY(-3px);filter:brightness(1.05)}
@@ -74,6 +79,7 @@ button{border:0;border-radius:10px;padding:11px 15px;background:linear-gradient(
 .room-bar{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;margin-bottom:14px}
 .room-bar strong{font-size:20px;letter-spacing:3px;color:var(--green);margin-left:7px}
 .tag{margin-left:10px;background:#eef5ef;color:var(--green);padding:4px 8px;border-radius:999px;font-size:12px}
+.match-summary{display:inline-block;margin-left:10px;color:var(--muted);font-size:11px}
 .board{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:14px}
 .table-panel{min-height:580px;position:relative;padding:20px;background:radial-gradient(ellipse at center,#278958,#17653f 63%,#0f482c);color:#fff;overflow:hidden}
 .table-panel:before{content:"";position:absolute;inset:19px;border:2px solid rgba(255,255,255,.12);border-radius:49%;pointer-events:none}
@@ -92,6 +98,7 @@ button{border:0;border-radius:10px;padding:11px 15px;background:linear-gradient(
 .card.deck-card img,.card-back.deck-card-back img{display:block;width:100%;height:100%;object-fit:fill}
 .card-back.deck-card-back{padding:0;background:#173d75;border:2px solid #d0a942}
 .status{font-size:11px;color:#ffe48b;min-height:18px}
+.player.disconnected{opacity:.58}.player.disconnected .name{box-shadow:0 0 0 2px #ff9c68}.player.disconnected .status{color:#ffc2a2}
 .actions{position:absolute;z-index:5;bottom:17px;left:50%;transform:translateX(-50%);display:flex;gap:8px;white-space:nowrap}
 .actions button{background:linear-gradient(180deg,#ed623e,#bc2e1d)}
 .actions button.secondary{background:#218a9b}
@@ -130,6 +137,7 @@ button{border:0;border-radius:10px;padding:11px 15px;background:linear-gradient(
 .hero-cards{left:35px;bottom:33px;transform:scale(.83);transform-origin:bottom left}
 .hall-welcome small{display:none}
 .nickname input{width:120px}
+.match-setup-row{align-items:flex-start;flex-direction:column;gap:5px}.match-setup-row>b{width:auto}.match-options,.match-switch{width:100%}
 .hall-entry button{font-size:18px}
 .free-tag{left:10%}
 .fan-cards{transform:scale(.8);transform-origin:bottom right;right:4px;bottom:-12px}

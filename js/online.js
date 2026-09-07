@@ -5,19 +5,47 @@
   var rubbedGameNo = 0, rubActive = false, rubDragging = false, rubStart = null;
   var rubOffset = { x: 0, y: 0 };
   var selectedMode = "classic";
+  var selectedMatchType = "rounds", selectedRounds = 20, selectedMinutes = 20;
   var modeNames = { classic: "32张经典", double: "看牌加倍", four: "经典四人" };
+  var TOKEN_KEY = "boyi32_player_token", ROOM_KEY = "boyi32_room_code", NAME_KEY = "boyi32_player_name";
   var DECK_BASE = "assets/opendecks/svg cards/";
   var DECK_SUIT = { "红桃": "hearts", "方块": "diamonds", "黑桃": "spades", "梅花": "clubs" };
   var DECK_RANK = { "J": "jack", "Q": "queen" };
   var $ = function (id) { return document.getElementById(id); };
+  function storageGet(key) { try { return localStorage.getItem(key) || ""; } catch (_error) { return ""; } }
+  function storageSet(key, value) { try { if (value) localStorage.setItem(key, value); else localStorage.removeItem(key); } catch (_error) {} }
+  function makeToken() {
+    var bytes = new Uint8Array(24);
+    if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(bytes);
+    else for (var i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+    return Array.prototype.map.call(bytes, function (value) { return value.toString(16).padStart(2, "0"); }).join("");
+  }
+  var playerToken = storageGet(TOKEN_KEY) || makeToken();
+  storageSet(TOKEN_KEY, playerToken);
+  if (storageGet(NAME_KEY)) $("name").value = storageGet(NAME_KEY);
   function notice(text) { $("notice").textContent = text || ""; }
-  function emit(event, data) { socket.emit(event, data, function (result) { if (!result.ok) notice(result.error); }); }
+  function emit(event, data, done) {
+    socket.emit(event, data, function (result) {
+      result = result || { ok: false, error: "服务器没有响应。" };
+      if (!result.ok) notice(result.error);
+      if (done) done(result);
+    });
+  }
   function renderTurnText() {
     if (!state) return;
+    if (state.matchType === "time" && $("match-summary")) {
+      var matchLeft = state.endAt ? Math.max(0, state.endAt - Date.now()) : state.durationMinutes * 60 * 1000;
+      var minutes = Math.floor(matchLeft / 60000), secondsInMinute = Math.floor((matchLeft % 60000) / 1000);
+      $("match-summary").textContent = "时长模式 · " + minutes + ":" + String(secondsInMinute).padStart(2, "0");
+    }
     var turn = state.players.find(function (p) { return p.id === state.turnId; });
     if (state.phase === "rubbing") {
       var ready = state.players.filter(function (p) { return p.rubReady; }).length;
       $("turn").textContent = "等待搓牌 " + ready + "/" + state.players.length;
+      return;
+    }
+    if (state.phase === "finished") {
+      $("turn").textContent = "牌局已结束 · 查看最终积分";
       return;
     }
     if (state.phase === "showdown" && state.nextDeadline) {
@@ -31,7 +59,14 @@
       return;
     }
     var seconds = state.deadline ? Math.max(0, Math.ceil((state.deadline - Date.now()) / 1000)) : 0;
-    $("turn").textContent = "轮到 " + turn.name + (turn.autoManaged ? "（托管思考中）" : " · " + seconds + "s");
+    $("turn").textContent = !turn.connected && !turn.autoManaged ? ("等待 " + turn.name + " 重连 · " + seconds + "s") : "轮到 " + turn.name + (turn.autoManaged ? "（托管思考中）" : " · " + seconds + "s");
+  }
+  function updateLiveLabels() {
+    renderTurnText();
+    document.querySelectorAll("[data-disconnect-deadline]").forEach(function (element) {
+      var left = Math.max(0, Math.ceil((Number(element.dataset.disconnectDeadline) - Date.now()) / 1000));
+      element.textContent = "断线重连中 · " + left + "s";
+    });
   }
   function deckCardSrc(c) {
     if (c.rank === "大王") return encodeURI(DECK_BASE + "card fronts/jokers/red joker.svg");
@@ -96,7 +131,7 @@
   }
   function syncRubOverlay() {
     if (!state) return;
-    var me = state.players.find(function (p) { return p.id === socket.id; });
+    var me = state.players.find(function (p) { return p.id === state.selfId; });
     if (state.phase === "rubbing" && me && me.hand && state.gameNo !== rubbedGameNo) showRubCards(me.hand, state.gameNo);
     if (state.phase !== "rubbing" && rubActive) {
       rubActive = false; rubDragging = false;
@@ -106,20 +141,23 @@
   function render() {
     if (!state) return;
     $("lobby").classList.add("hidden"); $("room").classList.remove("hidden");
+    storageSet(ROOM_KEY, state.code);
     $("room-code").textContent = state.code;
-    $("phase").textContent = state.phase === "lobby" ? (modeNames[state.mode] || "等待玩家") : state.phase === "rubbing" ? "搓牌中" : state.phase === "showdown" ? "本局结算" : "第 " + state.round + " 轮";
+    $("phase").textContent = state.phase === "lobby" ? (modeNames[state.mode] || "等待玩家") : state.phase === "rubbing" ? "搓牌中" : state.phase === "showdown" ? "本局结算" : state.phase === "finished" ? "比赛结束" : "第 " + state.round + " 轮";
+    var progress = state.matchType === "time" ? ("时长模式 · " + state.durationMinutes + "分钟") : ("局数模式 · " + state.gameNo + "/" + state.maxRounds + "局");
+    $("match-summary").textContent = progress;
     $("pot").textContent = state.pot;
     renderTurnText();
     var players = $("players"); players.innerHTML = "";
     state.players.forEach(function (p, index) {
-      var el = document.createElement("div"); el.className = "player";
+      var el = document.createElement("div"); el.className = "player" + (p.connected ? "" : " disconnected");
       var angle = (90 + index * 360 / state.players.length) * Math.PI / 180;
       el.style.left = (50 + 43 * Math.cos(angle)) + "%";
       el.style.top = (50 + 40 * Math.sin(angle)) + "%";
       el.style.setProperty("--seat-scale", state.players.length > 6 ? ".70" : state.players.length > 4 ? ".82" : "1");
       el.innerHTML = '<div class="name' + (p.id === state.turnId ? ' turn' : '') + '">' + p.name + (p.id === state.hostId ? ' · 房主' : '') + '</div>' +
         '<div class="chips">积分 ' + p.score + '</div><div class="cards">' + card(p.hand && p.hand[0]) + card(p.hand && p.hand[1]) + '</div>' +
-        '<div class="status">' + (p.folded ? '已弃牌' : p.waiting ? '等待比牌' : state.phase === 'rubbing' ? (p.rubReady ? '已搓牌' : '搓牌中') : p.autoManaged ? '托管中' : p.id === state.winnerId ? '本局获胜' : p.handText || '') + '</div>';
+        '<div class="status">' + (!p.connected ? (p.autoManaged ? '断线托管中' : '<span data-disconnect-deadline="' + p.disconnectDeadline + '">断线重连中</span>') : p.folded ? '已弃牌' : p.waiting ? '等待比牌' : state.phase === 'rubbing' ? (p.rubReady ? '已搓牌' : '搓牌中') : p.autoManaged ? '托管中' : p.id === state.winnerId ? '本局获胜' : p.handText || '') + '</div>';
       players.appendChild(el);
     });
     var actions = $("actions"); actions.innerHTML = "";
@@ -130,8 +168,9 @@
     });
     var eventBox = $("events"); eventBox.innerHTML = "";
     state.events.slice().reverse().forEach(function (e) { var line = document.createElement("div"); line.className = "event"; line.innerHTML = '<time>' + e.at + '</time>' + e.text; eventBox.appendChild(line); });
-    var isHost = state.hostId === socket.id;
-    $("start").classList.toggle("hidden", !isHost || state.phase !== "lobby");
+    var isHost = state.hostId === state.selfId;
+    $("start").classList.toggle("hidden", !isHost || (state.phase !== "lobby" && state.phase !== "finished"));
+    $("start").textContent = state.phase === "finished" ? "重新开始" : "房主开始";
     $("next").classList.toggle("hidden", !isHost || state.phase !== "showdown");
     if (state.phase !== "showdown") $("next").textContent = "下一局";
   }
@@ -142,8 +181,24 @@
       notice("已选择「" + modeNames[selectedMode] + "」，现在可以创建房间。");
     };
   });
-  $("create").onclick = function () { emit("room:create", { name: $("name").value, mode: selectedMode }); };
-  $("join").onclick = function () { emit("room:join", { name: $("name").value, code: $("code").value }); };
+  document.querySelectorAll("[data-match-type]").forEach(function (button) {
+    button.onclick = function () {
+      selectedMatchType = button.dataset.matchType;
+      document.querySelectorAll("[data-match-type]").forEach(function (item) { item.classList.toggle("selected", item === button); });
+      $("online-round-settings").classList.toggle("hidden", selectedMatchType !== "rounds");
+      $("online-time-settings").classList.toggle("hidden", selectedMatchType !== "time");
+    };
+  });
+  document.querySelectorAll("[data-rounds]").forEach(function (button) { button.onclick = function () { selectedRounds = Number(button.dataset.rounds); document.querySelectorAll("[data-rounds]").forEach(function (item) { item.classList.toggle("selected", item === button); }); }; });
+  document.querySelectorAll("[data-minutes]").forEach(function (button) { button.onclick = function () { selectedMinutes = Number(button.dataset.minutes); document.querySelectorAll("[data-minutes]").forEach(function (item) { item.classList.toggle("selected", item === button); }); }; });
+  $("create").onclick = function () {
+    storageSet(NAME_KEY, $("name").value.trim());
+    emit("room:create", { name: $("name").value, mode: selectedMode, token: playerToken, matchType: selectedMatchType, maxRounds: selectedRounds, durationMinutes: selectedMinutes });
+  };
+  $("join").onclick = function () {
+    storageSet(NAME_KEY, $("name").value.trim());
+    emit("room:join", { name: $("name").value, code: $("code").value, token: playerToken });
+  };
   $("start").onclick = function () { emit("game:start", {}); };
   $("next").onclick = function () { emit("game:next", {}); };
   $("online-rub-slider").addEventListener("pointerdown", function (e) {
@@ -155,6 +210,16 @@
   ["pointerup", "pointercancel"].forEach(function (name) { $("online-rub-slider").addEventListener(name, function () { rubDragging = false; rubStart = null; this.classList.remove("dragging"); }); });
   $("online-rub-reveal").onclick = finishRubCards;
   socket.on("room_state", function (next) { state = next; notice(""); render(); syncRubOverlay(); });
+  function resumeRoom() {
+    var code = storageGet(ROOM_KEY);
+    if (!code) return;
+    emit("room:resume", { code: code, token: playerToken }, function (result) {
+      if (!result.ok) storageSet(ROOM_KEY, "");
+      else notice("已恢复房间连接。");
+    });
+  }
+  socket.on("connect", resumeRoom);
+  if (socket.connected) resumeRoom();
   socket.on("connect_error", function () { notice("无法连接联机服务，请确认服务端已启动。"); });
-  setInterval(renderTurnText, 250);
+  setInterval(updateLiveLabels, 250);
 })();
