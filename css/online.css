@@ -123,6 +123,20 @@ button{border:0;border-radius:10px;padding:11px 15px;background:linear-gradient(
 .online-rub-progress{height:7px;margin:0 24px;border-radius:99px;overflow:hidden;background:#dfd2bc}.online-rub-progress i{display:block;width:0;height:100%;border-radius:inherit;background:linear-gradient(90deg,#ffb52c,#f05222)}
 .online-rub-foot{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 22px 18px;color:#8d704e;font-size:12px}.online-rub-foot button{border:1px solid #e6b184;border-radius:99px;padding:8px 15px;background:#fff8eb;color:#d75424}
 
+/* ---------- 赛后排行榜 ---------- */
+.online-ranking{margin-top:14px;padding:18px;background:linear-gradient(145deg,#fffdf7,#f3e7ce);border-color:#e1cb9b}
+.ranking-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:13px}
+.ranking-head small{display:block;color:#bd8d32;font-size:9px;font-weight:900;letter-spacing:2px}
+.ranking-head h2{margin:2px 0 0;color:#533817;font-size:20px}
+.ranking-head>span{padding:5px 10px;border-radius:999px;background:#ead5aa;color:#795522;font-size:11px;font-weight:800}
+.online-ranking ol{display:grid;gap:7px;margin:0;padding:0;list-style:none}
+.online-ranking li{display:grid;grid-template-columns:38px minmax(0,1fr) auto;align-items:center;gap:9px;min-height:42px;padding:7px 12px;border:1px solid #eadfc7;border-radius:10px;background:rgba(255,255,255,.8)}
+.online-ranking li:first-child{border-color:#d8ae49;background:linear-gradient(90deg,#fff1b8,#fffaf0)}
+.online-ranking li.is-me{box-shadow:inset 0 0 0 2px #1e7050}
+.ranking-place{font-size:18px;text-align:center;font-weight:900;color:#8f7443}
+.ranking-player{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:700;color:#493b29}
+.ranking-score{font-size:14px;color:#9a6418;white-space:nowrap}
+
 @media(max-width:760px){.board{grid-template-columns:1fr}
 .log-panel{max-height:220px}
 .table-panel{min-height:520px}
@@ -144,6 +158,9 @@ button{border:0;border-radius:10px;padding:11px 15px;background:linear-gradient(
 .cup{transform:scale(.76) rotate(11deg);transform-origin:bottom right;right:12px;bottom:10px}
 .gold-card{transform:scale(.76) rotate(-22deg);transform-origin:bottom right;right:71px;bottom:3px}
 .online-rub-stage{height:300px}.online-rub-card{left:calc(50% - 75px);top:55px;width:150px}
+.online-ranking{padding:13px}.ranking-head h2{font-size:17px}
+.online-ranking li{grid-template-columns:30px minmax(0,1fr) auto;min-height:38px;padding:6px 9px;gap:6px}
+.ranking-place{font-size:15px}.ranking-player,.ranking-score{font-size:12px}
 }
 
 

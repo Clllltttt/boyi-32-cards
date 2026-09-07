@@ -61,6 +61,26 @@
     var seconds = state.deadline ? Math.max(0, Math.ceil((state.deadline - Date.now()) / 1000)) : 0;
     $("turn").textContent = !turn.connected && !turn.autoManaged ? ("等待 " + turn.name + " 重连 · " + seconds + "s") : "轮到 " + turn.name + (turn.autoManaged ? "（托管思考中）" : " · " + seconds + "s");
   }
+  function renderRanking() {
+    var panel = $("online-ranking");
+    if (!panel || !state || state.phase !== "finished") {
+      if (panel) { panel.classList.add("hidden"); panel.innerHTML = ""; }
+      return;
+    }
+    var sorted = state.players.slice().sort(function (a, b) { return b.score - a.score; });
+    var lastScore = null, shownRank = 0;
+    var rows = sorted.map(function (player, index) {
+      if (lastScore === null || player.score !== lastScore) shownRank = index + 1;
+      lastScore = player.score;
+      var medal = shownRank === 1 ? "🥇" : shownRank === 2 ? "🥈" : shownRank === 3 ? "🥉" : shownRank;
+      return '<li class="' + (player.id === state.selfId ? "is-me" : "") + '"><span class="ranking-place">' + medal + '</span>' +
+        '<span class="ranking-player">' + player.name + (player.id === state.selfId ? "（你）" : "") + '</span>' +
+        '<strong class="ranking-score">' + (player.score > 0 ? "+" : "") + player.score + ' 分</strong></li>';
+    }).join("");
+    panel.innerHTML = '<div class="ranking-head"><div><small>FINAL RANKING</small><h2>对局排行榜</h2></div><span>' +
+      (state.matchType === "time" ? state.durationMinutes + "分钟结束" : state.maxRounds + "局完成") + '</span></div><ol>' + rows + '</ol>';
+    panel.classList.remove("hidden");
+  }
   function updateLiveLabels() {
     renderTurnText();
     document.querySelectorAll("[data-disconnect-deadline]").forEach(function (element) {
@@ -160,6 +180,7 @@
         '<div class="status">' + (!p.connected ? (p.autoManaged ? '断线托管中' : '<span data-disconnect-deadline="' + p.disconnectDeadline + '">断线重连中</span>') : p.folded ? '已弃牌' : p.waiting ? '等待比牌' : state.phase === 'rubbing' ? (p.rubReady ? '已搓牌' : '搓牌中') : p.autoManaged ? '托管中' : p.id === state.winnerId ? '本局获胜' : p.handText || '') + '</div>';
       players.appendChild(el);
     });
+    renderRanking();
     var actions = $("actions"); actions.innerHTML = "";
     if (state.actions) [["raise", "吃桌面 +" + state.pot, ""], ["call", "吃一个底注 +1", "secondary"], ["wait", "等待比牌", "secondary"], ["fold", "弃牌", "gray"]].forEach(function (entry) {
       if (!state.actions[entry[0]]) return;

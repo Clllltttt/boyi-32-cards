@@ -266,6 +266,28 @@
     var ph = { setup: "准备中", deal: "翻牌定头家", betting: "下注阶段", showdown: "比牌阶段", settle: "结算" };
     $("phase-pill").textContent = ph[G.phase] || G.phase;
   }
+  function renderMatchRanking() {
+    var panel = $("match-ranking");
+    if (!panel) return;
+    if (!G.matchFinished) {
+      panel.classList.add("hidden");
+      panel.innerHTML = "";
+      return;
+    }
+    var sorted = G.players.slice().sort(function (a, b) { return b.chips - a.chips; });
+    var lastScore = null, shownRank = 0;
+    var rows = sorted.map(function (p, index) {
+      if (lastScore === null || p.chips !== lastScore) shownRank = index + 1;
+      lastScore = p.chips;
+      var medal = shownRank === 1 ? "🥇" : shownRank === 2 ? "🥈" : shownRank === 3 ? "🥉" : shownRank;
+      return '<li class="' + (p.isHuman ? "is-me" : "") + '"><span class="ranking-place">' + medal + '</span>' +
+        '<span class="ranking-player">' + p.name + (p.isHuman ? "（你）" : "") + '</span>' +
+        '<strong class="ranking-score">' + (p.chips > 0 ? "+" : "") + p.chips + ' 分</strong></li>';
+    }).join("");
+    var matchText = G.matchMode === "rounds" ? (G.maxRounds + "局已完成") : "本场时长已结束";
+    panel.innerHTML = '<div class="ranking-head"><div><small>FINAL RANKING</small><h2>对局排行榜</h2></div><span>' + matchText + '</span></div><ol>' + rows + '</ol>';
+    panel.classList.remove("hidden");
+  }
   function renderAll() { renderSeats(); renderPot(); renderMyZone(); renderPills(); }
 
   /* ---------- 金币流动动画 ---------- */
@@ -378,6 +400,7 @@
     G.timeoutCount = 0; G.autoManaged = false;
     $("log").innerHTML = "";
     var b = $("result-banner"); b.className = "result-banner"; b.innerHTML = "";
+    renderMatchRanking();
     log("游戏开始：<b>" + G.n + "人局</b>，每人从 <b>0 积分</b>开始，底注 <b>" + G.ante + "</b>。");
     renderAll();
   }
@@ -790,6 +813,7 @@
       G.dealer = (G.dealer + 1) % G.n;
     }
     renderAll();
+    renderMatchRanking();
   }
   function waitNextRound(session) {
     return new Promise(function (resolve) {

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>32张 · 联机原型</title>
-  <link rel="stylesheet" href="css/online.css?v=20260907-room-session">
+  <link rel="stylesheet" href="css/online.css?v=20260907-ranking">
 </head>
 <body>
   <main class="online-shell">
@@ -48,6 +48,7 @@
         <section class="panel table-panel"><div class="pot"><span>公池</span><b id="pot">0</b><small id="turn">等待开局</small></div><div id="players" class="players"></div><div id="actions" class="actions"></div></section>
         <aside class="panel log-panel"><h2>对局记录</h2><div id="events"></div></aside>
       </div>
+      <section class="panel online-ranking hidden" id="online-ranking" aria-live="polite"></section>
       <p class="server-note">此原型中：只有服务器知道整副牌；其他人的手牌在比牌前不会下发到你的浏览器。</p>
     </section>
   </main>
@@ -63,6 +64,6 @@
     </div>
   </div>
   <script src="/socket.io/socket.io.js"></script>
-  <script src="js/online.js?v=20260907-room-session"></script>
+  <script src="js/online.js?v=20260907-ranking"></script>
 </body>
 </html>

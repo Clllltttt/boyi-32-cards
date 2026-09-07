@@ -378,6 +378,18 @@ repeating-linear-gradient(90deg,rgba(0,0,0,.04) 0 1px,transparent 1px 9px);
 .result-banner.tie{display:block;background:#f2f2f2;color:#666;border:1px solid #ddd;}
 .result-banner .next-btn{margin-left:14px;border:none;border-radius:8px;padding:8px 18px;background:var(--accent);color:#fff;font-weight:700;cursor:pointer;font-family:inherit;font-size:14px;}
 .result-banner .next-btn:hover{filter:brightness(1.06);}
+.match-ranking{margin-top:12px;padding:18px;background:linear-gradient(145deg,#fffdf7,#f6ecd7);border:1px solid #e6d3aa;border-radius:16px;box-shadow:0 8px 24px rgba(93,62,23,.12);}
+.ranking-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:13px;}
+.ranking-head small{display:block;color:#bd8d32;font-size:9px;font-weight:900;letter-spacing:2px;}
+.ranking-head h2{margin-top:2px;color:#533817;font-size:20px;}
+.ranking-head>span{padding:5px 10px;border-radius:999px;background:#ead5aa;color:#795522;font-size:11px;font-weight:800;}
+.match-ranking ol{display:grid;gap:7px;list-style:none;}
+.match-ranking li{display:grid;grid-template-columns:38px minmax(0,1fr) auto;align-items:center;gap:9px;min-height:42px;padding:7px 12px;border:1px solid #eadfc7;border-radius:10px;background:rgba(255,255,255,.78);}
+.match-ranking li:first-child{border-color:#d8ae49;background:linear-gradient(90deg,#fff1b8,#fffaf0);box-shadow:0 3px 12px rgba(193,141,37,.16);}
+.match-ranking li.is-me{box-shadow:inset 0 0 0 2px #3a6b4f;}
+.ranking-place{font-size:18px;text-align:center;font-weight:900;color:#8f7443;}
+.ranking-player{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:700;color:#493b29;}
+.ranking-score{font-size:14px;color:#9a6418;white-space:nowrap;}
 
 /* ---------- 手机牌桌 ---------- */
 @media(max-width:600px){
@@ -438,6 +450,9 @@ repeating-linear-gradient(90deg,rgba(0,0,0,.04) 0 1px,transparent 1px 9px);
   .actions button{width:100%;padding:11px 7px;font-size:13px;}
   .timer{grid-column:1/-1;margin:0;justify-content:flex-end;}
   .status-row{margin-top:10px;gap:7px;}.log{margin-top:9px;max-height:120px;}
+  .match-ranking{padding:13px;margin-top:10px;}.ranking-head h2{font-size:17px;}
+  .match-ranking li{grid-template-columns:30px minmax(0,1fr) auto;min-height:38px;padding:6px 9px;gap:6px;}
+  .ranking-place{font-size:15px;}.ranking-player,.ranking-score{font-size:12px;}
 }
 
 /* ---------- 规则页 ---------- */
