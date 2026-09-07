@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>32张棋牌游戏 · 网站</title>
-<link rel="stylesheet" href="css/style.css?v=20260907-mobile-table">
+<link rel="stylesheet" href="css/style.css?v=20260907-final-result">
 </head>
 <body>
 <div class="wrap">
@@ -108,6 +108,8 @@
         <div class="actions" id="actions" style="display:none;">
           <button class="btn-raise" id="btn-raise">吃桌面</button>
           <button class="btn-call" id="btn-call">吃一个底注</button>
+          <button class="btn-half" id="btn-half">吃半个公池</button>
+          <button class="btn-blind-call" id="btn-blind-call">蒙吃底注</button>
           <button class="btn-pass" id="btn-pass">过（直接比牌）</button>
           <button class="btn-fold" id="btn-fold">弃牌</button>
           <div class="timer hidden" id="timer">
@@ -123,9 +125,16 @@
       </div>
 
       <div class="result-banner" id="result-banner"></div>
-      <section class="match-ranking hidden" id="match-ranking" aria-live="polite"></section>
       <div class="log" id="log"></div>
     </div>
+    <section class="final-screen hidden" id="solo-result-screen" aria-live="polite">
+      <aside class="final-summary">
+        <div class="final-emblem">战绩</div><small>你的总积分</small><strong id="solo-final-score">0</strong>
+        <dl><div><dt>对局模式</dt><dd id="solo-final-mode">—</dd></div><div><dt>完成局数</dt><dd id="solo-final-rounds">0</dd></div></dl>
+        <button type="button" id="solo-result-again" class="final-again">再来一场</button><a href="online.html" class="final-home">返回大厅</a>
+      </aside>
+      <div class="final-board"><div class="final-title"><small>FINAL RESULT</small><h2>本场战绩</h2></div><section class="match-ranking" id="match-ranking"></section></div>
+    </section>
   </section>
 
   <!-- ============ 规则 ============ -->
@@ -184,6 +193,24 @@
 
 </div>
 
+<div class="blind-overlay hidden" id="blind-overlay" role="dialog" aria-modal="true" aria-labelledby="blind-title">
+  <div class="blind-dialog">
+    <div class="blind-badge">头家特权</div>
+    <h2 id="blind-title">看牌前，选择头家行动</h2>
+    <p>可先蒙吃再自由看牌；蒙吃桌面后，后面玩家不能吃底注或半池。</p>
+    <div class="blind-card-backs" aria-hidden="true">
+      <img src="assets/opendecks/svg%20cards/card%20backs/card%20back%20blue.svg" alt="">
+      <img src="assets/opendecks/svg%20cards/card%20backs/card%20back%20blue.svg" alt="">
+    </div>
+    <div class="blind-countdown"><span id="blind-countdown-text">30s</span><i><b id="blind-countdown-bar"></b></i></div>
+    <div class="blind-actions">
+      <button type="button" id="blind-eat-btn">蒙吃桌面</button>
+      <button type="button" id="blind-bottom-btn">蒙吃底注 +1</button>
+      <button type="button" id="blind-look-btn">先看牌</button>
+    </div>
+  </div>
+</div>
+
 <div class="rub-overlay hidden" id="rub-overlay" role="dialog" aria-modal="true" aria-labelledby="rub-title">
   <div class="rub-dialog">
     <div class="rub-head">
@@ -208,9 +235,9 @@
 
 <script src="js/data.js"></script>
 <script src="js/engine.js"></script>
-<script src="js/game.js?v=20260907-ranking"></script>
+<script src="js/game.js?v=20260907-final-result"></script>
 <script src="js/tables.js"></script>
-  <script src="js/rules.js?v=20260907-room-session"></script>
+  <script src="js/rules.js?v=20260907-blind-dealer"></script>
 <script>
   function activateTab(name) {
     var target = document.querySelector('.tab[data-tab="' + name + '"]');

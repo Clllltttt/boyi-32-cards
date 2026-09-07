@@ -110,6 +110,13 @@ button{border:0;border-radius:10px;padding:11px 15px;background:linear-gradient(
 .server-note{text-align:center;color:#dde1ff;font-size:12px}
 
 /* ---------- 联机搓牌 ---------- */
+.online-blind-overlay{position:fixed;inset:0;z-index:1100;display:grid;place-items:center;padding:18px;background:radial-gradient(circle at 50% 38%,#263a30 0%,#121a16 76%,#0c110e 100%)}
+.online-blind-dialog{width:min(430px,94vw);padding:26px 24px 22px;border-radius:22px;background:linear-gradient(155deg,#fffdf6,#f2e3c7);box-shadow:0 24px 70px rgba(0,0,0,.5);text-align:center;color:#563715}
+.online-blind-dialog>span{display:inline-block;padding:5px 12px;border-radius:99px;background:#d39a25;color:#fff;font-size:11px;font-weight:900;letter-spacing:2px}
+.online-blind-dialog h2{margin:9px 0 0;font-size:23px}.online-blind-dialog>p{margin:8px auto 17px;max-width:330px;color:#8c704f;font-size:12px;line-height:1.7}
+.online-blind-backs{display:flex;justify-content:center;gap:10px;margin-bottom:16px}.online-blind-backs img{width:92px;aspect-ratio:5/7;border:2px solid #d0a942;border-radius:11px;box-shadow:0 8px 18px rgba(50,31,10,.25)}
+.online-blind-time{display:flex;align-items:center;justify-content:center;gap:9px;margin-bottom:14px;color:#8d704e;font-size:12px}.online-blind-time i{display:block;width:140px;height:6px;overflow:hidden;border-radius:99px;background:#ddcfb4}.online-blind-time em{display:block;width:100%;height:100%;background:linear-gradient(90deg,#ef9d25,#db4b20)}
+.online-blind-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}.online-blind-actions button{font-size:14px}.online-blind-actions button:first-child{background:linear-gradient(180deg,#e39b24,#bd6815)}.online-blind-actions button:last-child{background:#fff;color:#69563d;border:1px solid #ddceb4}
 .online-rub-overlay{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:18px;background:radial-gradient(circle at 50% 38%,#2b3a31 0%,#171d19 72%,#101411 100%)}
 .online-rub-dialog{width:min(560px,96vw);overflow:hidden;border-radius:22px;background:linear-gradient(155deg,#fffdf7,#f4ead6);box-shadow:0 24px 70px rgba(0,0,0,.5);color:#5b3a17}
 .online-rub-head{display:flex;align-items:center;justify-content:space-between;padding:18px 22px 13px;border-bottom:1px solid #eadcc2}
@@ -136,11 +143,18 @@ button{border:0;border-radius:10px;padding:11px 15px;background:linear-gradient(
 .ranking-place{font-size:18px;text-align:center;font-weight:900;color:#8f7443}
 .ranking-player{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:700;color:#493b29}
 .ranking-score{font-size:14px;color:#9a6418;white-space:nowrap}
+.online-final-screen{min-height:680px;display:grid;grid-template-columns:300px 1fr;overflow:hidden;border-radius:24px;background:linear-gradient(135deg,#24bced,#397deb 44%,#a32bc5);box-shadow:0 22px 60px rgba(4,24,66,.42);color:#fff}
+.online-final-summary{padding:48px 30px;display:flex;flex-direction:column;align-items:center;background:linear-gradient(180deg,rgba(37,210,219,.8),rgba(56,108,213,.75));border-right:2px solid rgba(255,255,255,.3)}
+.online-final-emblem{width:142px;height:142px;border-radius:50%;display:grid;place-items:center;margin-bottom:34px;background:radial-gradient(circle at 35% 28%,#fff8af,#ffc21e 45%,#ed7c00 72%);border:9px solid rgba(255,255,255,.6);box-shadow:0 12px 28px rgba(20,51,130,.42);font-size:34px;font-weight:1000;color:#9a4b00;text-shadow:0 2px #fff}
+.online-final-summary>small{font-size:16px}.online-final-summary>strong{font-size:52px;line-height:1.2;color:#fff39b;text-shadow:0 3px 0 #2455a8;margin:4px 0 20px}.online-final-summary dl{width:100%;margin:0 0 28px}.online-final-summary dl div{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.22)}.online-final-summary dt{opacity:.8}.online-final-summary dd{margin:0;font-weight:800}
+.online-final-again,.online-final-home{width:100%;box-sizing:border-box;border:0;border-radius:999px;padding:14px;text-align:center;font:800 18px inherit;color:#fff;text-decoration:none;margin-top:12px;cursor:pointer}.online-final-again{background:linear-gradient(#76e72e,#14a80b);box-shadow:0 5px 0 #087d11}.online-final-again:disabled{filter:grayscale(.65);opacity:.72;cursor:default}.online-final-home{background:linear-gradient(#48cfff,#3962e8);box-shadow:0 5px 0 #253fb0}
+.online-final-board{margin:30px 28px 30px 0;padding:0 18px 24px;background:#fffaf0;border-radius:18px;color:#70400e}.online-final-title{margin:0 -18px 10px;padding:18px 24px;background:linear-gradient(#ffd43b,#ff9e00);border-radius:18px 18px 0 0}.online-final-title small{font-weight:900;opacity:.65}.online-final-title h2{margin:2px 0 0;font-size:28px}.online-final-board .online-ranking{margin:0;padding:0;border:0;background:transparent}.ranking-columns{display:grid;grid-template-columns:minmax(0,1fr) 100px 130px;padding:11px 15px;color:#a85a00;font-weight:900}.online-final-board .online-ranking li{grid-template-columns:48px minmax(0,1fr) 100px 130px;min-height:62px;font-size:17px}.ranking-wins{text-align:center;color:#b16b15}.online-final-board .ranking-score{text-align:right}
 
 @media(max-width:760px){.board{grid-template-columns:1fr}
 .log-panel{max-height:220px}
 .table-panel{min-height:520px}
 .player{width:150px}
+.online-final-screen{grid-template-columns:1fr;min-height:auto}.online-final-summary{padding:24px 20px;border-right:0;border-bottom:2px solid rgba(255,255,255,.3)}.online-final-emblem{width:92px;height:92px;margin-bottom:16px;font-size:24px}.online-final-summary>strong{font-size:40px;margin-bottom:10px}.online-final-summary dl{margin-bottom:12px}.online-final-board{margin:14px;padding:0 8px 15px}.online-final-title{margin:0 -8px 8px;padding:13px 16px}.ranking-columns{grid-template-columns:minmax(0,1fr) 58px 76px;padding:8px;font-size:11px}.online-final-board .online-ranking li{grid-template-columns:31px minmax(0,1fr) 58px 76px;gap:4px;padding:7px 5px;font-size:12px}.ranking-wins{font-size:11px}
 }
 @media(max-width:560px){.online-shell{padding:10px}
 .mode-grid{gap:8px}
@@ -158,6 +172,7 @@ button{border:0;border-radius:10px;padding:11px 15px;background:linear-gradient(
 .cup{transform:scale(.76) rotate(11deg);transform-origin:bottom right;right:12px;bottom:10px}
 .gold-card{transform:scale(.76) rotate(-22deg);transform-origin:bottom right;right:71px;bottom:3px}
 .online-rub-stage{height:300px}.online-rub-card{left:calc(50% - 75px);top:55px;width:150px}
+.online-blind-dialog{padding:21px 16px 17px}.online-blind-dialog h2{font-size:20px}.online-blind-backs img{width:76px}.online-blind-actions button{font-size:13px;padding:11px 7px}
 .online-ranking{padding:13px}.ranking-head h2{font-size:17px}
 .online-ranking li{grid-template-columns:30px minmax(0,1fr) auto;min-height:38px;padding:6px 9px;gap:6px}
 .ranking-place{font-size:15px}.ranking-player,.ranking-score{font-size:12px}

@@ -53,8 +53,8 @@ function matchSettings(input) {
 function createPlayer(name, token, socket) {
   return {
     id: crypto.randomUUID(), reconnectToken: safeToken(token), socketId: socket.id, connected: true, disconnectDeadline: 0, disconnectTimer: null,
-    name: safeName(name), score: 0, hand: [], folded: false, waiting: false, stake: 0, winCap: 1, usedBottom: false, hasRaised: false,
-    hasBetThisRound: false, hasTakenTurn: false, acted: false, bluffUsed: false, timeoutCount: 0, autoManaged: false
+    name: safeName(name), score: 0, wins: 0, hand: [], folded: false, waiting: false, stake: 0, winCap: 1, usedBottom: false, hasRaised: false,
+    hasBetThisRound: false, hasTakenTurn: false, acted: false, bluffUsed: false, timeoutCount: 0, autoManaged: false, hasLooked: false
   };
 }
 function clearDisconnectTimer(player) {
@@ -100,22 +100,27 @@ function meetsLastSeatWinThreshold(player) {
 }
 function legalActions(room, player) {
   const opening = room.bettingStage === "opening";
+  const bottomAllowed = opening && !room.blindTableOpened && !player.usedBottom;
   return {
     raise: room.pot > 0,
-    call: opening && !player.usedBottom,
+    call: bottomAllowed,
+    half: bottomAllowed,
+    blindcall: bottomAllowed && !!room.blindBottomChain && !player.hasLooked,
     wait: !opening && player.hasBetThisRound,
     fold: !player.usedBottom && !player.hasRaised
   };
 }
 function autoAction(room, player) {
-  const ev = ENGINE.evaluate(player.hand[0], player.hand[1]);
-  const point = ev.type === "special" ? 10 : ev.point;
   const r = Math.random();
   const bluff = (action) => { player.bluffUsed = true; return action; };
   const legal = legalActions(room, player);
+  if (legal.blindcall && !player.hasLooked && r < 0.38) return "blindcall";
+  player.hasLooked = true; player.blind = false;
+  const ev = ENGINE.evaluate(player.hand[0], player.hand[1]);
+  const point = ev.type === "special" ? 10 : ev.point;
   const choose = (action) => legal[action] ? action : legal.wait ? "wait" : legal.raise ? "raise" : legal.call ? "call" : "fold";
   if (room.bettingStage === "opening") {
-    if (point >= 8) return choose(r < 0.78 ? "raise" : "call");
+    if (point >= 8) return choose(r < 0.68 ? "raise" : r < 0.88 ? "half" : "call");
     if (point === 7) return choose(!player.bluffUsed && r < 0.08 ? bluff("raise") : "call");
     if (!player.bluffUsed && r < 0.06) return choose(bluff("raise"));
     if (!player.bluffUsed && r < 0.28) return choose(bluff("call"));
@@ -203,6 +208,7 @@ function settle(room, contenders) {
     // 最后一家通过8点门槛的直接获胜通吃；其他情况才受主动下注两倍上限约束。
     const prize = room.lastSeatThresholdDirectWin ? room.pot : Math.min(room.pot, winner.winCap * 2);
     winner.score += prize;
+    winner.wins += 1;
     room.pot -= prize;
     room.winnerId = winner.id;
     room.dealer = room.players.indexOf(winner);
@@ -255,10 +261,11 @@ function applyAction(room, player, action, timeout) {
   if (!legal[action]) return false;
   const cost = room.pot;
   const opening = room.bettingStage === "opening";
-  if (action === "call" && opening && !player.usedBottom) {
-    player.score -= 1; player.stake += 1; player.winCap = 1; player.usedBottom = true; player.hasBetThisRound = true;
-    addEvent(room, player.name + " 吃一个底注（+1），公池 → " + (room.pot + 1) + "。");
-    room.pot += 1;
+  if ((action === "call" || action === "blindcall" || action === "half") && opening && !player.usedBottom) {
+    const bottomCost = action === "half" ? Math.ceil(room.pot / 2) : 1;
+    player.score -= bottomCost; player.stake += bottomCost; player.winCap = bottomCost; player.usedBottom = true; player.hasBetThisRound = true;
+    addEvent(room, player.name + (action === "half" ? " 吃半个公池" : action === "blindcall" ? " 蒙吃一个底注" : " 吃一个底注") + "（+" + bottomCost + "），公池 → " + (room.pot + bottomCost) + "。" + (action === "blindcall" ? " 下一家可继续蒙吃底注。" : ""));
+    room.pot += bottomCost;
   } else if (action === "raise" && cost > 0) {
     player.score -= cost; player.stake += cost; player.winCap = cost; player.hasRaised = true; player.hasBetThisRound = true; room.pot += cost;
     if (opening) room.openingHasTableBet = true;
@@ -272,6 +279,7 @@ function applyAction(room, player, action, timeout) {
     addEvent(room, player.name + " 弃牌（已投入不退）。" + (timeout ? "（托管）" : ""));
   } else return;
   player.acted = true; player.hasTakenTurn = true;
+  if (opening) room.blindBottomChain = action === "blindcall";
   if (opening && action !== "fold") room.openingAllPriorFolded = false;
   if (opening) {
     const unacted = active(room).filter((p) => !p.acted);
@@ -308,9 +316,61 @@ function beginBetting(room) {
   if (room.phase !== "rubbing") return;
   clearRubTimer(room);
   room.phase = "playing";
-  room.turnId = room.players[room.dealer % room.players.length].id;
-  addEvent(room, "全员搓牌完成，首轮下注开始：每位玩家可选「吃桌面／吃一个底注／弃牌」。");
+  const dealer = room.players[room.dealer % room.players.length];
+  const unacted = active(room).filter((p) => !p.acted);
+  room.turnId = dealer.acted && unacted.length ? nextPlayer(room, dealer.id, unacted).id : dealer.id;
+  addEvent(room, room.blindTableOpened
+    ? "首轮下注开始：头家已经蒙吃桌面，后续玩家只能「吃桌面／弃牌」。"
+    : "首轮下注开始：可选「吃桌面／吃一个底注／吃半个公池／弃牌」，未看牌者还可按规则跟蒙底注。");
   armTimer(room);
+  broadcast(room);
+}
+function beginRubbing(room, choice) {
+  if (room.phase !== "blind_choice") return;
+  clearTimer(room);
+  const dealer = room.players[room.dealer % room.players.length];
+  room.phase = "rubbing";
+  room.turnId = null;
+  room.deadline = 0;
+  if (choice === "blind_table") {
+    const cost = room.pot;
+    dealer.score -= cost; dealer.stake += cost; dealer.winCap = cost;
+    dealer.hasRaised = true; dealer.hasBetThisRound = true; dealer.hasTakenTurn = true; dealer.acted = true; dealer.blind = true; dealer.hasLooked = false;
+    room.pot += cost; room.blindTableOpened = true; room.openingHasTableBet = true; room.openingAllPriorFolded = false;
+    addEvent(room, "头家 " + dealer.name + " 蒙吃桌面，下注 " + cost + "，公池 → " + room.pot + "；后续玩家不能吃底注或半池，头家之后可自由看牌。");
+  } else if (choice === "blind_bottom") {
+    dealer.score -= 1; dealer.stake += 1; dealer.winCap = 1; dealer.usedBottom = true; dealer.hasBetThisRound = true; dealer.hasTakenTurn = true; dealer.acted = true; dealer.blind = true; dealer.hasLooked = false;
+    room.pot += 1; room.blindBottomChain = true; room.openingAllPriorFolded = false;
+    addEvent(room, "头家 " + dealer.name + " 蒙吃一个底注（+1），公池 → " + room.pot + "；下一家未看牌时可继续蒙吃底注。");
+  } else {
+    dealer.blind = false; dealer.hasLooked = true;
+    addEvent(room, "头家 " + dealer.name + " 选择先看牌，再正常行动。");
+  }
+  // 看牌不再是开局屏障：除头家选择期间外，每位玩家都能随时主动看牌。
+  beginBetting(room);
+}
+function armBlindChoiceTimer(room) {
+  clearTimer(room);
+  if (room.phase !== "blind_choice" || !room.turnId) return;
+  const dealer = room.players.find((p) => p.id === room.turnId);
+  if (!dealer) return;
+  if (!dealer.connected && dealer.disconnectDeadline > Date.now()) {
+    room.deadline = dealer.disconnectDeadline;
+    return broadcast(room);
+  }
+  room.deadline = Date.now() + 30000;
+  room.timer = setTimeout(() => {
+    if (room.phase !== "blind_choice" || room.turnId !== dealer.id) return;
+    dealer.timeoutCount += 1;
+    if (dealer.timeoutCount < 3) {
+      addEvent(room, dealer.name + " 第 " + dealer.timeoutCount + " 次蒙吃选择超时，继续等待。");
+      armBlindChoiceTimer(room);
+      return broadcast(room);
+    }
+    dealer.autoManaged = true;
+    addEvent(room, dealer.name + " 蒙吃选择三次超时，系统托管并选择先看牌。");
+    beginRubbing(room, "look");
+  }, 30000);
   broadcast(room);
 }
 function startMatch(room) {
@@ -322,7 +382,7 @@ function startMatch(room) {
   room.events = [];
   room.matchStartedAt = Date.now();
   room.endAt = room.matchType === "time" ? room.matchStartedAt + room.durationMinutes * 60 * 1000 : 0;
-  room.players.forEach((p) => { p.score = 0; p.timeoutCount = 0; p.autoManaged = false; });
+  room.players.forEach((p) => { p.score = 0; p.wins = 0; p.timeoutCount = 0; p.autoManaged = false; });
   addEvent(room, "牌局开始：" + (room.matchType === "time" ? room.durationMinutes + "分钟时长模式。" : room.maxRounds + "局模式。"));
   startRound(room);
 }
@@ -336,27 +396,29 @@ function startRound(room) {
     addEvent(room, "首局翻牌：" + headCard.rank + (headCard.sym || "") + "，头家为 " + room.players[room.dealer].name + "。");
   }
   room.gameNo = (room.gameNo || 0) + 1;
-  room.round = 1; room.bettingStage = "opening"; room.openingHasTableBet = false; room.openingAllPriorFolded = true; room.lastSeatThresholdFailed = false; room.lastSeatThresholdDirectWin = false; room.roundHasRaise = false;
-  room.phase = "rubbing"; room.winnerId = null; room.turnId = null;
+  room.round = 1; room.bettingStage = "opening"; room.openingHasTableBet = false; room.openingAllPriorFolded = true; room.lastSeatThresholdFailed = false; room.lastSeatThresholdDirectWin = false; room.roundHasRaise = false; room.blindTableOpened = false; room.blindBottomChain = false;
+  room.phase = "blind_choice"; room.winnerId = null; room.turnId = room.players[room.dealer % room.players.length].id;
   room.players.forEach((p, i) => {
     p.hand = [deck[i * 2], deck[i * 2 + 1]]; p.folded = false; p.waiting = false; p.usedBottom = false;
-    p.hasRaised = false; p.hasBetThisRound = false; p.hasTakenTurn = false; p.acted = false; p.stake = 1; p.winCap = 1; p.bluffUsed = false; p.rubReady = false;
+    p.hasRaised = false; p.hasBetThisRound = false; p.hasTakenTurn = false; p.acted = false; p.stake = 1; p.winCap = 1; p.bluffUsed = false; p.rubReady = false; p.blind = true; p.hasLooked = false;
     p.score -= 1; p.timeoutCount = 0; p.autoManaged = false;
   });
   room.pot += room.players.length;
   addEvent(room, "第 " + room.gameNo + " 局发牌完成，本局底注各 1 积分。");
-  addEvent(room, "等待所有玩家完成搓牌。");
-  broadcast(room);
-  room.rubTimer = setTimeout(() => beginBetting(room), 30000);
+  addEvent(room, "等待头家在看牌前选择「蒙吃桌面／蒙吃底注／先看牌」。");
+  armBlindChoiceTimer(room);
 }
 function view(room, viewerId) {
   const isShowdown = room.phase === "showdown" || room.phase === "finished";
+  const dealer = room.players[room.dealer % room.players.length];
   return {
     code: room.code, mode: room.mode, phase: room.phase, round: room.round, gameNo: room.gameNo, pot: room.pot, deadline: room.deadline, nextDeadline: room.nextDeadline || 0,
-    selfId: viewerId, matchType: room.matchType, maxRounds: room.maxRounds, durationMinutes: room.durationMinutes, endAt: room.endAt || 0,
-    hostId: room.hostId, turnId: room.turnId, winnerId: room.winnerId, events: room.events,
-    players: room.players.map((p) => ({ id: p.id, name: p.name, score: p.score, folded: p.folded, waiting: p.waiting, rubReady: !!p.rubReady, autoManaged: p.autoManaged, connected: p.connected, disconnectDeadline: p.disconnectDeadline || 0,
-      hand: (isShowdown || p.id === viewerId) ? p.hand : null,
+    selfId: viewerId, matchType: room.matchType, maxRounds: room.maxRounds, durationMinutes: room.durationMinutes, endAt: room.endAt || 0, matchStartedAt: room.matchStartedAt || 0,
+    hostId: room.hostId, turnId: room.turnId, winnerId: room.winnerId, events: room.events, blindTableOpened: !!room.blindTableOpened,
+    blindChoice: room.phase === "blind_choice" && dealer && dealer.id === viewerId ? { cost: room.pot } : null,
+    canViewCards: room.phase !== "lobby" && room.phase !== "blind_choice" && room.phase !== "showdown" && room.phase !== "finished" && !!room.players.find((p) => p.id === viewerId && !p.hasLooked),
+    players: room.players.map((p) => ({ id: p.id, name: p.name, score: p.score, wins: p.wins || 0, folded: p.folded, waiting: p.waiting, rubReady: !!p.rubReady, blind: !!p.blind, autoManaged: p.autoManaged, connected: p.connected, disconnectDeadline: p.disconnectDeadline || 0,
+      hand: (isShowdown || (p.id === viewerId && p.hasLooked)) ? p.hand : null,
       handText: isShowdown ? handText(p.hand) : null
     })),
     actions: room.phase === "playing" && room.turnId === viewerId ? (() => {
@@ -395,6 +457,7 @@ function expireDisconnect(roomCode, playerId) {
   }
   transferHost(room);
   if (room.phase === "playing" && room.turnId === player.id) armTimer(room);
+  else if (room.phase === "blind_choice" && room.turnId === player.id) beginRubbing(room, "look");
   broadcast(room);
 }
 function markDisconnected(room, player) {
@@ -404,7 +467,7 @@ function markDisconnected(room, player) {
   clearDisconnectTimer(player);
   player.disconnectTimer = setTimeout(() => expireDisconnect(room.code, player.id), 60000);
   addEvent(room, player.name + " 已断线，座位保留60秒等待重连。");
-  if (room.phase === "playing" && room.turnId === player.id) {
+  if ((room.phase === "playing" || room.phase === "blind_choice") && room.turnId === player.id) {
     clearTimer(room);
     room.deadline = player.disconnectDeadline;
   }
@@ -445,7 +508,9 @@ io.on("connection", (socket) => {
     if (!room || !player) return done({ ok: false, error: "原房间已结束或恢复身份已失效。" });
     bindPlayer(room, player, socket);
     addEvent(room, player.name + " 已重新连接。");
-    if (room.phase === "playing" && room.turnId === player.id) armTimer(room); else broadcast(room);
+    if (room.phase === "playing" && room.turnId === player.id) armTimer(room);
+    else if (room.phase === "blind_choice" && room.turnId === player.id) armBlindChoiceTimer(room);
+    else broadcast(room);
     done({ ok: true, code: room.code, resumed: true });
   });
   socket.on("game:start", (_payload, done) => {
@@ -468,14 +533,35 @@ io.on("connection", (socket) => {
     applyAction(room, player, action, false);
     done({ ok: true });
   });
+  socket.on("game:blind_choice", ({ choice }, done) => {
+    done = typeof done === "function" ? done : function () {};
+    const room = getRoomFor(socket);
+    const player = getPlayerForSocket(room, socket);
+    const dealer = room && room.players[room.dealer % room.players.length];
+    if (!room || !player || room.phase !== "blind_choice" || !dealer || dealer.id !== player.id) return done({ ok: false, error: "当前不是你的蒙吃选择时间。" });
+    if (!["blind_table", "blind_bottom", "look"].includes(choice)) return done({ ok: false, error: "无效的头家选择。" });
+    beginRubbing(room, choice);
+    done({ ok: true });
+  });
   socket.on("game:rub_ready", (_payload, done) => {
     done = typeof done === "function" ? done : function () {};
     const room = getRoomFor(socket);
     const player = getPlayerForSocket(room, socket);
-    if (!room || !player || room.phase !== "rubbing") return done({ ok: false, error: "当前不在搓牌阶段。" });
+    if (!room || !player || !["playing", "rubbing"].includes(room.phase)) return done({ ok: false, error: "当前不能搓牌。" });
     player.rubReady = true;
-    addEvent(room, player.name + " 已完成搓牌。");
-    if (room.players.every((p) => p.rubReady)) beginBetting(room); else broadcast(room);
+    broadcast(room);
+    done({ ok: true });
+  });
+  socket.on("game:view_cards", (_payload, done) => {
+    done = typeof done === "function" ? done : function () {};
+    const room = getRoomFor(socket);
+    const player = getPlayerForSocket(room, socket);
+    if (!room || !player || room.phase === "blind_choice" || !["playing", "rubbing"].includes(room.phase)) return done({ ok: false, error: "当前不能看牌。" });
+    if (!player.hasLooked) {
+      player.hasLooked = true; player.blind = false;
+      addEvent(room, player.name + " 选择看牌。");
+      broadcast(room);
+    }
     done({ ok: true });
   });
   socket.on("game:next", (_payload, done) => {

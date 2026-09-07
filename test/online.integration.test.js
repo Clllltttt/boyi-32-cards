@@ -92,20 +92,49 @@ test("room settings, five-round finish and reconnect identity", async (t) => {
   assert.equal(resumedState.players.find((player) => player.id === guestId).connected, true);
 
   assert.equal((await ack(host, "game:start", {})).ok, true);
+  let blindRuleVerified = false;
+  let blindBottomVerified = false;
   while (true) {
-    const current = await waitFor(hostView, (state) => ["rubbing", "playing", "showdown", "finished"].includes(state.phase), "game state stalled");
+    const current = await waitFor(hostView, (state) => ["blind_choice", "rubbing", "playing", "showdown", "finished"].includes(state.phase), "game state stalled");
     if (current.phase === "finished") break;
-    if (current.phase === "rubbing") {
-      const hostPlayer = current.players.find((player) => player.id === current.selfId);
-      const guestPlayer = guestView.state.players.find((player) => player.id === guestView.state.selfId);
-      if (!hostPlayer.rubReady) await ack(host, "game:rub_ready", {});
-      if (!guestPlayer.rubReady) await ack(guest, "game:rub_ready", {});
-      await waitFor(hostView, (state) => state.phase !== "rubbing", "betting did not start");
+    if (current.phase === "blind_choice") {
+      const actor = current.turnId === current.selfId ? host : guest;
+      const actorView = actor === host ? hostView : guestView;
+      const actorState = await waitFor(actorView, (state) => state.phase === "blind_choice" && state.blindChoice, "dealer blind choice missing");
+      const potBeforeChoice = actorState.pot;
+      const choice = !blindRuleVerified ? "blind_table" : !blindBottomVerified ? "blind_bottom" : "look";
+      assert.equal((await ack(actor, "game:blind_choice", { choice })).ok, true);
+      const rubbingState = await waitFor(hostView, (state) => state.phase === "playing", "betting did not start after dealer choice");
+      if (!blindRuleVerified) {
+        assert.equal(rubbingState.pot, potBeforeChoice * 2);
+        assert.equal(rubbingState.blindTableOpened, true);
+      }
       continue;
     }
     if (current.phase === "playing") {
       const actor = current.turnId === current.selfId ? host : guest;
-      assert.equal((await ack(actor, "game:action", { action: "fold" })).ok, true);
+      const actorView = actor === host ? hostView : guestView;
+      if (!blindRuleVerified && current.blindTableOpened) {
+        const actingState = await waitFor(actorView, (state) => state.phase === "playing" && state.turnId === current.turnId && state.actions, "blind follower actions missing");
+        assert.equal(actingState.actions.call, false);
+        assert.equal(actingState.actions.half, false);
+        assert.equal(actingState.actions.raise, true);
+        assert.equal(actingState.actions.fold, true);
+        blindRuleVerified = true;
+      } else if (!blindBottomVerified) {
+        const actingState = await waitFor(actorView, (state) => state.phase === "playing" && state.turnId === current.turnId && state.actions, "blind bottom follower actions missing");
+        if (actingState.actions.blindcall) {
+          assert.equal(actingState.actions.call, true);
+          assert.equal(actingState.actions.half, true);
+          assert.equal(actingState.canViewCards, true);
+          assert.equal((await ack(actor, "game:action", { action: "blindcall" })).ok, true);
+          blindBottomVerified = true;
+          continue;
+        }
+      }
+      const actionState = await waitFor(actorView, (state) => state.phase === "playing" && state.turnId === current.turnId && state.actions, "actor actions missing");
+      const action = actionState.actions.wait ? "wait" : "fold";
+      assert.equal((await ack(actor, "game:action", { action })).ok, true);
       await waitFor(hostView, (state) => state.phase !== "playing", "round did not settle");
       continue;
     }
@@ -114,6 +143,8 @@ test("room settings, five-round finish and reconnect identity", async (t) => {
       await waitFor(hostView, (state) => state.phase !== "showdown", "next round did not start");
     }
   }
+  assert.equal(blindRuleVerified, true);
+  assert.equal(blindBottomVerified, true);
   assert.equal(hostView.state.gameNo, 5);
   assert.match(hostView.state.events.at(-1).text, /最终排名/);
 });

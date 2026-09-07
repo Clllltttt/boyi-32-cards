@@ -39,6 +39,11 @@
       $("match-summary").textContent = "时长模式 · " + minutes + ":" + String(secondsInMinute).padStart(2, "0");
     }
     var turn = state.players.find(function (p) { return p.id === state.turnId; });
+    if (state.phase === "blind_choice") {
+      var blindSeconds = state.deadline ? Math.max(0, Math.ceil((state.deadline - Date.now()) / 1000)) : 30;
+      $("turn").textContent = state.blindChoice ? ("你是头家 · 请选择是否蒙吃 · " + blindSeconds + "s") : ("等待头家选择是否蒙吃 · " + blindSeconds + "s");
+      return;
+    }
     if (state.phase === "rubbing") {
       var ready = state.players.filter(function (p) { return p.rubReady; }).length;
       $("turn").textContent = "等待搓牌 " + ready + "/" + state.players.length;
@@ -65,6 +70,7 @@
     var panel = $("online-ranking");
     if (!panel || !state || state.phase !== "finished") {
       if (panel) { panel.classList.add("hidden"); panel.innerHTML = ""; }
+      if ($("online-result-screen")) $("online-result-screen").classList.add("hidden");
       return;
     }
     var sorted = state.players.slice().sort(function (a, b) { return b.score - a.score; });
@@ -74,15 +80,28 @@
       lastScore = player.score;
       var medal = shownRank === 1 ? "🥇" : shownRank === 2 ? "🥈" : shownRank === 3 ? "🥉" : shownRank;
       return '<li class="' + (player.id === state.selfId ? "is-me" : "") + '"><span class="ranking-place">' + medal + '</span>' +
-        '<span class="ranking-player">' + player.name + (player.id === state.selfId ? "（你）" : "") + '</span>' +
+        '<span class="ranking-player">' + player.name + (player.id === state.selfId ? "（你）" : "") + '</span><b class="ranking-wins">' + (player.wins || 0) + ' 胜</b>' +
         '<strong class="ranking-score">' + (player.score > 0 ? "+" : "") + player.score + ' 分</strong></li>';
     }).join("");
-    panel.innerHTML = '<div class="ranking-head"><div><small>FINAL RANKING</small><h2>对局排行榜</h2></div><span>' +
-      (state.matchType === "time" ? state.durationMinutes + "分钟结束" : state.maxRounds + "局完成") + '</span></div><ol>' + rows + '</ol>';
+    panel.innerHTML = '<div class="ranking-columns"><span>排名 / 玩家</span><span>胜局</span><span>总积分</span></div><ol>' + rows + '</ol>';
     panel.classList.remove("hidden");
+    var me = state.players.find(function (player) { return player.id === state.selfId; });
+    $("online-final-score").textContent = (me && me.score > 0 ? "+" : "") + (me ? me.score : 0);
+    $("online-final-room").textContent = state.code;
+    $("online-final-rounds").textContent = state.gameNo + "局";
+    $("room").classList.add("hidden");
+    $("online-result-screen").classList.remove("hidden");
+    var again = $("online-result-again");
+    again.disabled = state.hostId !== state.selfId;
+    again.textContent = state.hostId === state.selfId ? "再来一场" : "等待房主再开一场";
   }
   function updateLiveLabels() {
     renderTurnText();
+    if (state && state.phase === "blind_choice" && state.blindChoice) {
+      var seconds = state.deadline ? Math.max(0, Math.ceil((state.deadline - Date.now()) / 1000)) : 30;
+      $("online-blind-seconds").textContent = seconds + "s";
+      $("online-blind-bar").style.width = Math.min(100, seconds / 30 * 100) + "%";
+    }
     document.querySelectorAll("[data-disconnect-deadline]").forEach(function (element) {
       var left = Math.max(0, Math.ceil((Number(element.dataset.disconnectDeadline) - Date.now()) / 1000));
       element.textContent = "断线重连中 · " + left + "s";
@@ -152,18 +171,28 @@
   function syncRubOverlay() {
     if (!state) return;
     var me = state.players.find(function (p) { return p.id === state.selfId; });
-    if (state.phase === "rubbing" && me && me.hand && state.gameNo !== rubbedGameNo) showRubCards(me.hand, state.gameNo);
-    if (state.phase !== "rubbing" && rubActive) {
+    if (me && me.hand && state.phase !== "showdown" && state.phase !== "finished" && state.gameNo !== rubbedGameNo) showRubCards(me.hand, state.gameNo);
+    if ((state.phase === "lobby" || state.phase === "blind_choice" || state.phase === "showdown" || state.phase === "finished") && rubActive) {
       rubActive = false; rubDragging = false;
       $("online-rub-overlay").classList.add("hidden");
     }
   }
+  function syncBlindOverlay() {
+    if (!state || !state.blindChoice) {
+      $("online-blind-overlay").classList.add("hidden");
+      return;
+    }
+    $("online-blind-eat").textContent = "蒙吃桌面 +" + state.blindChoice.cost;
+    $("online-blind-bottom").textContent = "蒙吃底注 +1";
+    $("online-blind-overlay").classList.remove("hidden");
+  }
   function render() {
     if (!state) return;
     $("lobby").classList.add("hidden"); $("room").classList.remove("hidden");
+    $("online-result-screen").classList.add("hidden");
     storageSet(ROOM_KEY, state.code);
     $("room-code").textContent = state.code;
-    $("phase").textContent = state.phase === "lobby" ? (modeNames[state.mode] || "等待玩家") : state.phase === "rubbing" ? "搓牌中" : state.phase === "showdown" ? "本局结算" : state.phase === "finished" ? "比赛结束" : "第 " + state.round + " 轮";
+    $("phase").textContent = state.phase === "lobby" ? (modeNames[state.mode] || "等待玩家") : state.phase === "blind_choice" ? "头家选择" : state.phase === "rubbing" ? "搓牌中" : state.phase === "showdown" ? "本局结算" : state.phase === "finished" ? "比赛结束" : "第 " + state.round + " 轮";
     var progress = state.matchType === "time" ? ("时长模式 · " + state.durationMinutes + "分钟") : ("局数模式 · " + state.gameNo + "/" + state.maxRounds + "局");
     $("match-summary").textContent = progress;
     $("pot").textContent = state.pot;
@@ -177,12 +206,16 @@
       el.style.setProperty("--seat-scale", state.players.length > 6 ? ".70" : state.players.length > 4 ? ".82" : "1");
       el.innerHTML = '<div class="name' + (p.id === state.turnId ? ' turn' : '') + '">' + p.name + (p.id === state.hostId ? ' · 房主' : '') + '</div>' +
         '<div class="chips">积分 ' + p.score + '</div><div class="cards">' + card(p.hand && p.hand[0]) + card(p.hand && p.hand[1]) + '</div>' +
-        '<div class="status">' + (!p.connected ? (p.autoManaged ? '断线托管中' : '<span data-disconnect-deadline="' + p.disconnectDeadline + '">断线重连中</span>') : p.folded ? '已弃牌' : p.waiting ? '等待比牌' : state.phase === 'rubbing' ? (p.rubReady ? '已搓牌' : '搓牌中') : p.autoManaged ? '托管中' : p.id === state.winnerId ? '本局获胜' : p.handText || '') + '</div>';
+        '<div class="status">' + (!p.connected ? (p.autoManaged ? '断线托管中' : '<span data-disconnect-deadline="' + p.disconnectDeadline + '">断线重连中</span>') : p.folded ? '已弃牌' : p.waiting ? '等待比牌' : state.phase === 'blind_choice' ? (p.id === state.turnId ? '选择是否蒙吃' : '等待头家') : state.phase === 'rubbing' ? (p.blind ? '蒙牌中' : p.rubReady ? '已搓牌' : '搓牌中') : p.autoManaged ? '托管中' : p.id === state.winnerId ? '本局获胜' : p.handText || '') + '</div>';
       players.appendChild(el);
     });
     renderRanking();
     var actions = $("actions"); actions.innerHTML = "";
-    if (state.actions) [["raise", "吃桌面 +" + state.pot, ""], ["call", "吃一个底注 +1", "secondary"], ["wait", "等待比牌", "secondary"], ["fold", "弃牌", "gray"]].forEach(function (entry) {
+    if (state.canViewCards) {
+      var viewButton = document.createElement("button"); viewButton.textContent = "看牌"; viewButton.className = "secondary";
+      viewButton.onclick = function () { emit("game:view_cards", {}); }; actions.appendChild(viewButton);
+    }
+    if (state.actions) [["raise", "吃桌面 +" + state.pot, ""], ["call", "吃一个底注 +1", "secondary"], ["half", "吃半个公池 +" + Math.ceil(state.pot / 2), "secondary"], ["blindcall", "蒙吃底注 +1", "secondary"], ["wait", "等待比牌", "secondary"], ["fold", "弃牌", "gray"]].forEach(function (entry) {
       if (!state.actions[entry[0]]) return;
       var button = document.createElement("button"); button.textContent = entry[1]; button.className = entry[2];
       button.onclick = function () { emit("game:action", { action: entry[0] }); }; actions.appendChild(button);
@@ -222,6 +255,7 @@
   };
   $("start").onclick = function () { emit("game:start", {}); };
   $("next").onclick = function () { emit("game:next", {}); };
+  $("online-result-again").onclick = function () { emit("game:start", {}); };
   $("online-rub-slider").addEventListener("pointerdown", function (e) {
     if (!rubActive) return;
     rubDragging = true; rubStart = { x: e.clientX - rubOffset.x, y: e.clientY - rubOffset.y };
@@ -230,7 +264,10 @@
   $("online-rub-slider").addEventListener("pointermove", function (e) { if (rubDragging && rubActive) updateRubSlide(e.clientX - rubStart.x, e.clientY - rubStart.y); });
   ["pointerup", "pointercancel"].forEach(function (name) { $("online-rub-slider").addEventListener(name, function () { rubDragging = false; rubStart = null; this.classList.remove("dragging"); }); });
   $("online-rub-reveal").onclick = finishRubCards;
-  socket.on("room_state", function (next) { state = next; notice(""); render(); syncRubOverlay(); });
+  $("online-blind-eat").onclick = function () { emit("game:blind_choice", { choice: "blind_table" }); };
+  $("online-blind-bottom").onclick = function () { emit("game:blind_choice", { choice: "blind_bottom" }); };
+  $("online-blind-look").onclick = function () { emit("game:blind_choice", { choice: "look" }); };
+  socket.on("room_state", function (next) { state = next; notice(""); render(); syncBlindOverlay(); syncRubOverlay(); });
   function resumeRoom() {
     var code = storageGet(ROOM_KEY);
     if (!code) return;

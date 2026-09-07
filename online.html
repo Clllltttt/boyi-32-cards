@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>32张 · 联机原型</title>
-  <link rel="stylesheet" href="css/online.css?v=20260907-ranking">
+  <link rel="stylesheet" href="css/online.css?v=20260907-final-result">
 </head>
 <body>
   <main class="online-shell">
@@ -48,10 +48,25 @@
         <section class="panel table-panel"><div class="pot"><span>公池</span><b id="pot">0</b><small id="turn">等待开局</small></div><div id="players" class="players"></div><div id="actions" class="actions"></div></section>
         <aside class="panel log-panel"><h2>对局记录</h2><div id="events"></div></aside>
       </div>
-      <section class="panel online-ranking hidden" id="online-ranking" aria-live="polite"></section>
       <p class="server-note">此原型中：只有服务器知道整副牌；其他人的手牌在比牌前不会下发到你的浏览器。</p>
     </section>
+    <section class="online-final-screen hidden" id="online-result-screen" aria-live="polite">
+      <aside class="online-final-summary"><div class="online-final-emblem">战绩</div><small>你的总积分</small><strong id="online-final-score">0</strong>
+        <dl><div><dt>房间号</dt><dd id="online-final-room">—</dd></div><div><dt>完成局数</dt><dd id="online-final-rounds">0</dd></div></dl>
+        <button type="button" id="online-result-again" class="online-final-again">再来一场</button><a href="/online.html" class="online-final-home">返回大厅</a>
+      </aside>
+      <div class="online-final-board"><div class="online-final-title"><small>FINAL RESULT</small><h2>房间战绩</h2></div><section class="online-ranking" id="online-ranking"></section></div>
+    </section>
   </main>
+  <div class="online-blind-overlay hidden" id="online-blind-overlay" role="dialog" aria-modal="true" aria-labelledby="online-blind-title">
+    <div class="online-blind-dialog">
+      <span>头家特权</span><h2 id="online-blind-title">看牌前，选择头家行动</h2>
+      <p>可先蒙吃再自由看牌；蒙吃桌面后，后面玩家不能吃底注或半池。</p>
+      <div class="online-blind-backs"><img src="assets/opendecks/svg%20cards/card%20backs/card%20back%20blue.svg" alt=""><img src="assets/opendecks/svg%20cards/card%20backs/card%20back%20blue.svg" alt=""></div>
+      <div class="online-blind-time"><b id="online-blind-seconds">30s</b><i><em id="online-blind-bar"></em></i></div>
+      <div class="online-blind-actions"><button id="online-blind-eat" type="button">蒙吃桌面</button><button id="online-blind-bottom" type="button">蒙吃底注 +1</button><button id="online-blind-look" type="button">先看牌</button></div>
+    </div>
+  </div>
   <div class="online-rub-overlay hidden" id="online-rub-overlay" role="dialog" aria-modal="true" aria-labelledby="online-rub-title">
     <div class="online-rub-dialog">
       <div class="online-rub-head"><div><h2 id="online-rub-title">搓牌看牌</h2><p>先看花点边数，继续搓开才显示角标</p></div><span id="online-rub-round">第1局</span></div>
@@ -64,6 +79,6 @@
     </div>
   </div>
   <script src="/socket.io/socket.io.js"></script>
-  <script src="js/online.js?v=20260907-ranking"></script>
+  <script src="js/online.js?v=20260907-final-result"></script>
 </body>
 </html>
