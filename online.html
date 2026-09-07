@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>32张 · 联机原型</title>
+  <link rel="stylesheet" href="css/online.css?v=20260906-synced-rules">
+</head>
+<body>
+  <main class="online-shell">
+    <header class="online-head hall-header"><a href="/" class="back">←</a><div><b>32张游戏大厅</b><small>实时房间 · 服务端裁判</small></div><span class="online-badge">联机试玩</span></header>
+    <section id="lobby" class="panel lobby game-hall">
+      <div class="hall-welcome"><span class="online-dot"></span><b>经典单机，或和朋友一起开局</b><small>房间最多 8 人 · 虚拟积分</small></div>
+      <label class="nickname">你的昵称<input id="name" maxlength="12" placeholder="例如：小林"></label>
+      <div class="mode-grid">
+        <a href="/" class="mode-card mode-hero solo-entry" aria-label="进入32张经典单机版">
+          <span class="mode-kicker">单机人机对战</span><h1>32张经典</h1><p>两张定胜负，立即开始单机</p><span class="solo-cta">单机开始 ›</span>
+          <div class="hero-cards"><img src="assets/opendecks/svg%20cards/card%20fronts/spades/10%20of%20spades.svg" alt=""><img src="assets/opendecks/svg%20cards/card%20fronts/jokers/red%20joker.svg" alt=""></div>
+          <i class="hall-coin coin-a"></i><i class="hall-coin coin-b"></i><i class="hall-streak"></i>
+        </a>
+        <button type="button" class="mode-card mode-blue" data-mode="double" aria-pressed="false"><h2>看牌加倍</h2><p>看清牌面，再决定加注</p><div class="fan-cards"><img src="assets/opendecks/svg%20cards/card%20fronts/hearts/queen%20of%20hearts.svg" alt=""><img src="assets/opendecks/svg%20cards/card%20fronts/diamonds/queen%20of%20diamonds.svg" alt=""><img src="assets/opendecks/svg%20cards/card%20fronts/hearts/2%20of%20hearts.svg" alt=""></div></button>
+        <button type="button" class="mode-card mode-pink" data-mode="four" aria-pressed="false"><h2>经典四人</h2><p>满 4 人，牌局更刺激</p><div class="cup"><i></i><b>♠</b></div><div class="gold-card">A<br>♥</div></button>
+      </div>
+      <div class="hall-entry"><span class="free-tag">永久免费</span><button id="create" class="create-room">创建房间</button><div class="join-room"><input id="code" maxlength="4" placeholder="输入房间码"><button id="join">加入</button></div></div>
+      <nav class="hall-info-links" aria-label="游戏资料">
+        <a href="/?tab=rules"><span>📖</span><b>游戏规则</b><small>查看完整玩法说明</small></a>
+        <a href="/?tab=table"><span>🃏</span><b>牌型表</b><small>查看496种组合</small></a>
+      </nav>
+      <p class="hall-hint">创建后把四位房间码发给朋友，最多8人可加入同一桌。</p>
+      <div id="notice" class="notice"></div>
+    </section>
+    <section id="room" class="hidden">
+      <div class="room-bar panel"><div>房间码 <strong id="room-code">----</strong><span id="phase" class="tag">等待玩家</span></div><button id="start" class="hidden">房主开始</button><button id="next" class="hidden">下一局</button></div>
+      <div class="board">
+        <section class="panel table-panel"><div class="pot"><span>公池</span><b id="pot">0</b><small id="turn">等待开局</small></div><div id="players" class="players"></div><div id="actions" class="actions"></div></section>
+        <aside class="panel log-panel"><h2>对局记录</h2><div id="events"></div></aside>
+      </div>
+      <p class="server-note">此原型中：只有服务器知道整副牌；其他人的手牌在比牌前不会下发到你的浏览器。</p>
+    </section>
+  </main>
+  <div class="online-rub-overlay hidden" id="online-rub-overlay" role="dialog" aria-modal="true" aria-labelledby="online-rub-title">
+    <div class="online-rub-dialog">
+      <div class="online-rub-head"><div><h2 id="online-rub-title">搓牌看牌</h2><p>先看花点边数，继续搓开才显示角标</p></div><span id="online-rub-round">第1局</span></div>
+      <div class="online-rub-stage">
+        <div class="online-rub-card online-rub-hidden"><img id="online-rub-hidden-face" alt="第二张牌"><i class="online-rank-mask tl"></i><i class="online-rank-mask br"></i></div>
+        <div class="online-rub-card online-rub-slider" id="online-rub-slider"><span>按住上牌慢慢移开</span><img id="online-rub-visible-face" alt="第一张牌"></div>
+      </div>
+      <div class="online-rub-progress"><i id="online-rub-progress-bar"></i></div>
+      <div class="online-rub-foot"><span id="online-rub-progress-text">拖动上牌，先观察边上的花点</span><button id="online-rub-reveal" type="button">直接看牌</button></div>
+    </div>
+  </div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="js/online.js?v=20260906-synced-rules"></script>
+</body>
+</html>

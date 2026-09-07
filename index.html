@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>32张棋牌游戏 · 网站</title>
+<link rel="stylesheet" href="css/style.css?v=20260906-private-rub">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">32</span>
+      <div>
+        <h1>32张棋牌游戏</h1>
+        <div class="sub">单机人机对战 · 规则 V1.0 · 牌型表 V1.1</div>
+      </div>
+    </div>
+    <nav class="tabs">
+      <button class="tab on" data-tab="game">游戏</button>
+      <button class="tab" data-tab="rules">规则</button>
+      <button class="tab" data-tab="table">牌型表</button>
+    </nav>
+  </header>
+
+  <!-- ============ 游戏 ============ -->
+  <section id="tab-game" class="tab-pane">
+    <div id="setup-screen" class="solo-setup">
+      <div class="solo-setup-card">
+        <div class="solo-setup-head">
+          <a href="online.html" class="setup-back">← 返回大厅</a>
+          <div><h2>单机对局设置</h2><p>选择玩法后，与AI立即开局</p></div>
+        </div>
+        <div class="setup-row">
+          <strong>模式：</strong>
+          <div class="choice-grid mode-choices" id="mode-seg">
+            <button data-v="rounds" class="on"><i></i>局数模式</button>
+            <button data-v="time"><i></i>时长模式</button>
+          </div>
+        </div>
+        <div class="setup-row" id="round-settings">
+          <strong>局数：</strong>
+          <div class="choice-grid four-choices" id="round-count-seg">
+            <button data-v="5"><i></i>5局</button>
+            <button data-v="10"><i></i>10局</button>
+            <button data-v="20" class="on"><i></i>20局</button>
+            <button data-v="30"><i></i>30局</button>
+          </div>
+        </div>
+        <div class="setup-row hidden" id="time-settings">
+          <strong>时长：</strong>
+          <div class="choice-grid three-choices" id="duration-seg">
+            <button data-v="10"><i></i>10分钟</button>
+            <button data-v="20" class="on"><i></i>20分钟</button>
+            <button data-v="30"><i></i>30分钟</button>
+          </div>
+        </div>
+        <div class="setup-row players-row">
+          <strong>人数：</strong>
+          <div class="choice-grid people-choices" id="player-count-seg">
+            <button data-v="2"><i></i>2人</button>
+            <button data-v="3"><i></i>3人</button>
+            <button data-v="4"><i></i>4人</button>
+            <button data-v="5"><i></i>5人</button>
+            <button data-v="6" class="on"><i></i>6人</button>
+            <button data-v="7"><i></i>7人</button>
+            <button data-v="8"><i></i>8人</button>
+          </div>
+        </div>
+        <div class="setup-row">
+          <strong>操作：</strong>
+          <div class="choice-grid mode-choices" id="timer-seg">
+            <button data-v="on" class="on"><i></i>30秒倒计时</button>
+            <button data-v="off"><i></i>不限时间</button>
+          </div>
+        </div>
+        <button class="start-btn solo-start" id="start-btn">开始游戏</button>
+        <p class="setup-tip">所有玩家从0积分开始，虚拟积分，无真实货币。</p>
+      </div>
+    </div>
+
+    <div id="game-screen" class="hidden">
+      <div class="game-head">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <span class="pill" id="round-pill">第 1 局</span>
+          <span class="pill dealer hidden" id="dealer-pill">头家：—</span>
+        </div>
+        <button class="ghost-btn" id="restart-btn">退出本局</button>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table">
+          <div class="table-inner"></div>
+          <div class="dealer-chip hidden" id="dealer-chip">● 头家</div>
+          <div class="pot-center">
+            <div class="pot-label">公 池</div>
+            <div class="pot-val" id="pot-val">0</div>
+            <div class="pot-sub" id="pot-sub">等待开局…</div>
+          </div>
+          <div id="seats"></div>
+          <div class="coin-fx" id="coin-fx" aria-hidden="true"></div>
+        </div>
+      </div>
+
+      <div class="my-zone">
+        <div class="my-hand" id="my-hand"></div>
+        <div class="actions" id="actions" style="display:none;">
+          <button class="btn-raise" id="btn-raise">吃桌面</button>
+          <button class="btn-call" id="btn-call">吃一个底注</button>
+          <button class="btn-pass" id="btn-pass">过（直接比牌）</button>
+          <button class="btn-fold" id="btn-fold">弃牌</button>
+          <div class="timer hidden" id="timer">
+            <span id="timer-txt">30s</span>
+            <div class="bar"><i id="timer-bar" style="width:100%"></i></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="status-row">
+        <span class="pill" id="phase-pill">准备中</span>
+        <span class="muted" id="hint"></span>
+      </div>
+
+      <div class="result-banner" id="result-banner"></div>
+      <div class="log" id="log"></div>
+    </div>
+  </section>
+
+  <!-- ============ 规则 ============ -->
+  <section id="tab-rules" class="tab-pane hidden">
+    <h2 class="page-title">完整规则 V1.0</h2>
+    <div id="rules-content"></div>
+  </section>
+
+  <!-- ============ 牌型表 ============ -->
+  <section id="tab-table" class="tab-pane hidden">
+    <h2 class="page-title">32张牌与496组合牌型表 V1.1</h2>
+
+    <div class="panel">
+      <h3>一、32张牌</h3>
+      <div class="cards-grid" id="cards-grid"></div>
+    </div>
+
+    <div class="panel">
+      <h3>二、牌型层级（1最大 → 25最小）</h3>
+      <div class="hierarchy" id="hierarchy"></div>
+    </div>
+
+    <div class="panel">
+      <h3>三、496种两牌组合</h3>
+      <div class="table-controls">
+        <input type="text" id="filter-q" placeholder="搜索牌号(如 C04) / 牌型名">
+        <select id="filter-kind">
+          <option value="">全部性质</option>
+          <option value="特殊牌型">仅特殊牌型</option>
+          <option value="普通点数">仅普通点数</option>
+        </select>
+        <select id="filter-mianzi">
+          <option value="">全部面子</option>
+          <option value="Q">Q 面子</option>
+          <option value="2">2 面子</option>
+          <option value="红8">红8 面子</option>
+          <option value="红4">红4 面子</option>
+          <option value="黑10">黑10 面子</option>
+          <option value="无面子">无面子</option>
+        </select>
+        <span class="count">共 <b id="combo-count">496</b> 种</span>
+      </div>
+      <div class="combo-detail" id="combo-detail">点击任意组合查看详情</div>
+      <div class="combo-table-wrap">
+        <table class="combo-table">
+          <thead><tr><th>序号</th><th>组合</th><th>层级</th><th>牌型</th><th>最高面子</th><th>性质</th></tr></thead>
+          <tbody id="combo-tbody"></tbody>
+        </table>
+      </div>
+      <div class="verify-bar">
+        <button class="verify-btn" id="verify-btn">校验判定引擎（跑全部496组合）</button>
+        <span class="verify" id="verify-result"></span>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<div class="rub-overlay hidden" id="rub-overlay" role="dialog" aria-modal="true" aria-labelledby="rub-title">
+  <div class="rub-dialog">
+    <div class="rub-head">
+      <div><h2 id="rub-title">搓牌看牌</h2><p>先看花点边数，继续搓开才显示角标</p></div>
+      <span class="rub-round" id="rub-round">第1局</span>
+    </div>
+    <div class="rub-stage">
+      <div class="rub-card rub-card-hidden">
+        <span>底牌</span>
+        <img id="rub-hidden-face" alt="第二张牌">
+        <i class="rub-rank-mask rub-rank-mask-tl" aria-hidden="true"></i>
+        <i class="rub-rank-mask rub-rank-mask-br" aria-hidden="true"></i>
+      </div>
+      <div class="rub-card rub-card-visible" id="rub-slider" aria-label="按住上面的牌慢慢移开">
+        <span>按住上牌慢慢移开</span><img id="rub-visible-face" alt="第一张牌">
+      </div>
+    </div>
+    <div class="rub-progress"><i id="rub-progress-bar"></i></div>
+    <div class="rub-foot"><span id="rub-progress-text">拖动上牌，慢慢露出底牌</span><button id="rub-reveal" type="button">直接看牌</button></div>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/game.js?v=20260906-bet-lock"></script>
+<script src="js/tables.js"></script>
+<script src="js/rules.js?v=20260906-online-sync"></script>
+<script>
+  function activateTab(name) {
+    var target = document.querySelector('.tab[data-tab="' + name + '"]');
+    if (!target) return;
+    document.querySelectorAll(".tab").forEach(function (x) { x.classList.remove("on"); });
+    target.classList.add("on");
+    document.querySelectorAll(".tab-pane").forEach(function (p) { p.classList.add("hidden"); });
+    document.getElementById("tab-" + name).classList.remove("hidden");
+  }
+  document.querySelectorAll(".tab").forEach(function (t) {
+    t.onclick = function () {
+      activateTab(t.dataset.tab);
+    };
+  });
+  activateTab(new URLSearchParams(location.search).get("tab") || "game");
+</script>
+</body>
+</html>
