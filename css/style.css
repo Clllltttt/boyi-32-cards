@@ -379,6 +379,67 @@ repeating-linear-gradient(90deg,rgba(0,0,0,.04) 0 1px,transparent 1px 9px);
 .result-banner .next-btn{margin-left:14px;border:none;border-radius:8px;padding:8px 18px;background:var(--accent);color:#fff;font-weight:700;cursor:pointer;font-family:inherit;font-size:14px;}
 .result-banner .next-btn:hover{filter:brightness(1.06);}
 
+/* ---------- 手机牌桌 ---------- */
+@media(max-width:600px){
+  body{overflow-x:hidden;}
+  .wrap{padding:8px 8px 32px;}
+  .topbar{padding:10px 11px;margin-bottom:12px;border-radius:12px;}
+  .brand{gap:9px}.logo{width:36px;height:36px;font-size:17px}.brand h1{font-size:17px}.brand .sub{font-size:10px;}
+  .tabs{width:100%;}.tab{flex:1;padding:8px 6px;font-size:13px;}
+  .game-head{margin:0 2px 2px;gap:5px;}
+  .game-head .pill{padding:5px 9px;font-size:11px;}
+  .game-head .ghost-btn{padding:6px 10px;font-size:11px;}
+
+  .table-wrap{margin-top:28px;}
+  .table{height:340px;aspect-ratio:auto;border-width:7px;border-radius:46%/31%;}
+  .table-inner{inset:5%;border-radius:46%/32%;}
+  .pot-center{padding:5px 15px;}
+  .pot-center .pot-label{font-size:9px;letter-spacing:2px;}
+  .pot-center .pot-val{font-size:30px;}
+  .pot-center .pot-sub{max-width:110px;font-size:9px;line-height:1.25;}
+  .dealer-chip{font-size:8px;padding:3px 8px;letter-spacing:1px;}
+
+  .seat{min-width:94px;gap:3px;}
+  .seat.is-active{transform:translate(-50%,-50%) scale(1.04);}
+  .seat-name{gap:4px;padding:2px 7px 2px 2px;font-size:9.5px;}
+  .seat-avatar{width:18px;height:18px;font-size:8px;}
+  .seat-hand{gap:2px;}
+  .seat-hand .card,.seat-hand .card-back{width:44px;border-radius:6px;}
+  .seat-bottom{gap:3px;min-height:18px;}
+  .seat-chips{gap:3px;padding:2px 7px 2px 5px;font-size:9px;}
+  .seat-chips .coin-icon{width:10px;height:10px;}
+  .seat-action{font-size:9px;padding:3px 6px;border-radius:5px;}
+  .seat-turn-timer{top:-25px;width:53px;padding:3px 5px 4px;font-size:9px;}
+  .seat.folded::after{font-size:9px;padding:3px 7px;letter-spacing:1px;}
+  /* 自己的完整牌面已在下方展示，牌桌座位不再重复显示。 */
+  .seat.is-me .seat-hand{display:none;}
+  .seat.is-me{z-index:7;}
+
+  .seats.players-6 .seat{min-width:82px;}
+  .seats.players-6 .seat-hand .card,.seats.players-6 .seat-hand .card-back{width:38px;}
+  .seats.players-7 .seat,.seats.players-8 .seat{min-width:72px;gap:1px;}
+  .seats.players-7 .seat-hand .card,.seats.players-7 .seat-hand .card-back,
+  .seats.players-8 .seat-hand .card,.seats.players-8 .seat-hand .card-back{width:34px;}
+  .seats.players-7 .seat-name,.seats.players-8 .seat-name{gap:2px;padding:1px 5px 1px 1px;font-size:7.5px;}
+  .seats.players-7 .seat-avatar,.seats.players-8 .seat-avatar{width:15px;height:15px;font-size:7px;}
+  .seats.players-7 .seat-bottom,.seats.players-8 .seat-bottom{min-height:14px;gap:2px;}
+  .seats.players-7 .seat-chips,.seats.players-8 .seat-chips{padding:1px 5px 1px 4px;font-size:8px;}
+  .seats.players-7 .seat-action,.seats.players-8 .seat-action{padding:2px 4px;font-size:8px;}
+
+  .my-zone{margin-top:10px;padding:11px;border-radius:13px;}
+  .my-hand{gap:8px;align-items:flex-end;}
+  .my-hand .card{width:82px;border-radius:9px;}
+  .hand-info{order:3;flex:1 0 100%;min-width:0;margin:3px 0 0;}
+  .hand-info .hname{font-size:16px;}.hand-info .hdesc{font-size:11px;margin-top:2px;}
+  .my-meta{margin-left:auto;font-size:10px;}
+  .my-meta .chips{font-size:18px;gap:5px;}
+  .actions{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:11px;}
+  .actions[style*="display: none"]{display:none!important;}
+  .actions button{width:100%;padding:11px 7px;font-size:13px;}
+  .timer{grid-column:1/-1;margin:0;justify-content:flex-end;}
+  .status-row{margin-top:10px;gap:7px;}.log{margin-top:9px;max-height:120px;}
+}
+
 /* ---------- 规则页 ---------- */
 .rules-section{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:16px;box-shadow:0 2px 10px rgba(0,0,0,.04);}
 .rules-section h3{font-size:16px;margin-bottom:12px;color:var(--ink);}

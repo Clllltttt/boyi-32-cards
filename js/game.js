@@ -167,11 +167,15 @@
     var wrap = $("seats");
     wrap.innerHTML = "";
     var n = G.n;
-    var cx = 50, cy = 44, rx = 40, ry = 36;
+    wrap.className = "seats players-" + n;
+    var mobileTable = window.matchMedia && window.matchMedia("(max-width: 600px)").matches;
+    var cx = 50, cy = mobileTable ? 46 : 44;
+    var rx = mobileTable ? (n >= 6 ? 34 : 37) : 40;
+    var ry = mobileTable ? (n >= 6 ? 34 : 32) : 36;
     var dealerPosition = null;
     G.players.forEach(function (p, i) {
       var left, top;
-      if (i === 0) { left = 50; top = 88; }
+      if (i === 0) { left = 50; top = mobileTable ? 90 : 88; }
       else {
         var ang = (90 + i * (360 / n)) * Math.PI / 180;
         left = cx + rx * Math.cos(ang);
