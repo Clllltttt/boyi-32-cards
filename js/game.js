@@ -528,12 +528,14 @@
     return isCurrentSession(session);
   }
   function animateDealCard(playerIndex) {
-    if (window.GAME_AUDIO) window.GAME_AUDIO.play("deal");
     var layer = $("deal-fx"), pile = $("deck-pile");
     var seats = document.querySelectorAll("#seats .seat");
     var target = seats[playerIndex] && seats[playerIndex].querySelector(".seat-hand");
     var from = pointInTable(pile), to = pointInTable(target || seats[playerIndex]);
-    if (!layer || !from || !to) return delay(70);
+    if (!layer || !from || !to) {
+      if (window.GAME_AUDIO) window.GAME_AUDIO.play("deal");
+      return delay(70);
+    }
     var flying = document.createElement("div");
     flying.className = "flying-card";
     flying.innerHTML = '<img src="' + encodeURI(DECK_BASE + "card backs/card back blue.svg") + '" alt="">';
@@ -547,6 +549,8 @@
       { transform: "translate(" + (dx * .52 - 27) + "px," + (dy * .52 - 38) + "px) scale(1.03) rotate(" + (turn * .55) + "deg)", opacity: 1, offset: .52 },
       { transform: "translate(" + (dx - 27) + "px," + (dy - 38) + "px) scale(.88) rotate(" + turn + "deg)", opacity: .18 }
     ], { duration: 260, easing: "cubic-bezier(.22,.7,.25,1)", fill: "forwards" });
+    // 落牌声对齐牌到达玩家手边的瞬间，而不是动画刚起飞时。
+    setTimeout(function () { if (window.GAME_AUDIO) window.GAME_AUDIO.play("deal"); }, 205);
     return new Promise(function (resolve) {
       animation.onfinish = function () { flying.remove(); resolve(); };
       animation.oncancel = function () { flying.remove(); resolve(); };

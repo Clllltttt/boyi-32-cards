@@ -2,6 +2,7 @@
   "use strict";
   var socket = io();
   var state = null;
+  var dealAnimating = false, dealTimers = [];
   var rubbedGameNo = 0, rubActive = false, rubDragging = false, rubStart = null;
   var rubOffset = { x: 0, y: 0 };
   var selectedMode = "classic";
@@ -174,6 +175,7 @@
   }
   function syncRubOverlay() {
     if (!state) return;
+    if (dealAnimating) { $("online-rub-overlay").classList.add("hidden"); return; }
     var me = state.players.find(function (p) { return p.id === state.selfId; });
     if (me && me.hand && state.phase !== "showdown" && state.phase !== "finished" && state.gameNo !== rubbedGameNo) showRubCards(me.hand, state.gameNo);
     if ((state.phase === "lobby" || state.phase === "blind_choice" || state.phase === "showdown" || state.phase === "finished") && rubActive) {
@@ -183,6 +185,7 @@
     }
   }
   function syncBlindOverlay() {
+    if (dealAnimating) { $("online-blind-overlay").classList.add("hidden"); return; }
     if (!state || !state.blindChoice) {
       $("online-blind-overlay").classList.add("hidden");
       return;
@@ -205,6 +208,7 @@
     var players = $("players"); players.innerHTML = "";
     state.players.forEach(function (p, index) {
       var el = document.createElement("div"); el.className = "player" + (p.connected ? "" : " disconnected") + (p.id === state.dealerId ? " is-dealer" : "");
+      el.dataset.playerId = p.id;
       var angle = (90 + index * 360 / state.players.length) * Math.PI / 180;
       el.style.left = (50 + 43 * Math.cos(angle)) + "%";
       el.style.top = (50 + 40 * Math.sin(angle)) + "%";
@@ -277,10 +281,6 @@
   $("online-blind-look").onclick = function () { emit("game:blind_choice", { choice: "look" }); };
   function syncSounds(previous, next) {
     if (!window.GAME_AUDIO || !previous) return;
-    if (next.gameNo > previous.gameNo) {
-      window.GAME_AUDIO.play("shuffle");
-      setTimeout(function () { window.GAME_AUDIO.playDealSequence(next.players.length * 2); }, 260);
-    }
     if (next.pot > previous.pot) window.GAME_AUDIO.play("bet");
     if (next.turnId !== previous.turnId) {
       window.GAME_AUDIO.resetCountdown();
@@ -295,7 +295,69 @@
       setTimeout(function () { window.GAME_AUDIO.play("payout"); }, 420);
     }
   }
-  socket.on("room_state", function (next) { var previous = state; state = next; syncSounds(previous, next); notice(""); render(); syncBlindOverlay(); syncRubOverlay(); });
+  function clearDealAnimation() {
+    dealTimers.forEach(function (timer) { clearTimeout(timer); });
+    dealTimers = [];
+    dealAnimating = false;
+    document.querySelectorAll(".online-dealing-card").forEach(function (cardElement) {
+      cardElement.classList.remove("online-dealing-card");
+      cardElement.style.opacity = "";
+    });
+  }
+  function startDealAnimation(next) {
+    clearDealAnimation();
+    var seats = Array.prototype.slice.call(document.querySelectorAll("#players .player"));
+    if (!seats.length) return;
+    var dealerIndex = next.players.findIndex(function (player) { return player.id === next.dealerId; });
+    if (dealerIndex < 0) dealerIndex = 0;
+    var targets = [];
+    for (var pass = 0; pass < 2; pass++) {
+      for (var offset = 0; offset < seats.length; offset++) {
+        var playerIndex = (dealerIndex + offset) % seats.length;
+        var target = seats[playerIndex].querySelectorAll(".cards > .card, .cards > .card-back")[pass];
+        if (target) targets.push(target);
+      }
+    }
+    if (!targets.length || (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+      if (window.GAME_AUDIO) window.GAME_AUDIO.playDealSequence(targets.length || next.players.length * 2);
+      return;
+    }
+    dealAnimating = true;
+    targets.forEach(function (target) { target.classList.add("online-dealing-card"); });
+    if (window.GAME_AUDIO) window.GAME_AUDIO.play("shuffle");
+    var firstDelay = 340, stepDelay = 150, flightDuration = 300;
+    targets.forEach(function (target, index) {
+      dealTimers.push(setTimeout(function () {
+        var table = document.querySelector(".table-panel");
+        var tableRect = table.getBoundingClientRect(), cardRect = target.getBoundingClientRect();
+        var fromX = tableRect.left + tableRect.width / 2 - (cardRect.left + cardRect.width / 2);
+        var fromY = tableRect.top + tableRect.height / 2 - (cardRect.top + cardRect.height / 2);
+        if (window.GAME_AUDIO) window.GAME_AUDIO.play("deal");
+        var animation = target.animate([
+          { transform: "translate(" + fromX + "px," + fromY + "px) scale(.72) rotate(" + (index % 2 ? 7 : -7) + "deg)", opacity: 0 },
+          { transform: "translate(" + (fromX * .38) + "px," + (fromY * .38 - 16) + "px) scale(.92) rotate(" + (index % 2 ? 3 : -3) + "deg)", opacity: 1, offset: .58 },
+          { transform: "translate(0,0) scale(1) rotate(0deg)", opacity: 1 }
+        ], { duration: flightDuration, easing: "cubic-bezier(.2,.72,.24,1)", fill: "forwards" });
+        animation.onfinish = function () {
+          target.style.opacity = "1";
+          target.classList.remove("online-dealing-card");
+          animation.cancel();
+        };
+      }, firstDelay + index * stepDelay));
+    });
+    dealTimers.push(setTimeout(function () {
+      clearDealAnimation();
+      syncBlindOverlay();
+      syncRubOverlay();
+    }, firstDelay + (targets.length - 1) * stepDelay + flightDuration + 40));
+  }
+  socket.on("room_state", function (next) {
+    var previous = state;
+    var isNewRound = !!previous && next.gameNo > previous.gameNo;
+    state = next; syncSounds(previous, next); notice(""); render();
+    if (isNewRound) startDealAnimation(next);
+    syncBlindOverlay(); syncRubOverlay();
+  });
   function resumeRoom() {
     var code = storageGet(ROOM_KEY);
     if (!code) return;

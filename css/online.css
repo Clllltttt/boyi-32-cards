@@ -104,6 +104,7 @@ button{border:0;border-radius:10px;padding:11px 15px;background:linear-gradient(
 .card.deck-card{padding:0;background:#fff;border:1px solid #b8ae9b}
 .card.deck-card img,.card-back.deck-card-back img{display:block;width:100%;height:100%;object-fit:fill}
 .card-back.deck-card-back{padding:0;background:#173d75;border:2px solid #d0a942}
+.online-dealing-card{opacity:0;will-change:transform,opacity}
 .status{font-size:11px;color:#ffe48b;min-height:18px}
 .player.disconnected{opacity:.58}.player.disconnected .name{box-shadow:0 0 0 2px #ff9c68}.player.disconnected .status{color:#ffc2a2}
 .actions{position:absolute;z-index:5;bottom:17px;left:50%;transform:translateX(-50%);display:flex;gap:8px;white-space:nowrap}
