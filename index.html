@@ -102,6 +102,12 @@
             </div>
             <strong id="deck-count">32张</strong>
           </div>
+          <div class="dealer-draw hidden" id="dealer-draw" aria-live="polite">
+            <small id="dealer-draw-kicker">机器人正在指定翻牌玩家</small>
+            <div class="dealer-draw-card" id="dealer-draw-card"></div>
+            <strong id="dealer-draw-text">准备翻牌定头家</strong>
+            <span id="dealer-draw-count"></span>
+          </div>
           <div class="pot-center">
             <div class="pot-label">公 池</div>
             <div class="pot-val" id="pot-val">0</div>
@@ -249,7 +255,7 @@
 <script src="js/data.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/audio.js?v=20260908-audio-v1"></script>
-<script src="js/game.js?v=20260908-deal-sync"></script>
+<script src="js/game.js?v=20260908-ai-flex-risk"></script>
 <script src="js/tables.js"></script>
   <script src="js/rules.js?v=20260907-blind-dealer"></script>
 <script>
@@ -261,12 +267,25 @@
     document.querySelectorAll(".tab-pane").forEach(function (p) { p.classList.add("hidden"); });
     document.getElementById("tab-" + name).classList.remove("hidden");
   }
+  function setTabInUrl(name, replace) {
+    var url = new URL(location.href);
+    if (name === "game") url.searchParams.delete("tab");
+    else url.searchParams.set("tab", name);
+    history[replace ? "replaceState" : "pushState"]({ tab: name }, "", url.pathname + url.search + url.hash);
+  }
   document.querySelectorAll(".tab").forEach(function (t) {
     t.onclick = function () {
       activateTab(t.dataset.tab);
+      setTabInUrl(t.dataset.tab, false);
     };
   });
-  activateTab(new URLSearchParams(location.search).get("tab") || "game");
+  window.addEventListener("popstate", function () {
+    activateTab(new URLSearchParams(location.search).get("tab") || "game");
+  });
+  var initialTab = new URLSearchParams(location.search).get("tab") || "game";
+  if (!document.querySelector('.tab[data-tab="' + initialTab + '"]')) initialTab = "game";
+  activateTab(initialTab);
+  setTabInUrl(initialTab, true);
 </script>
 </body>
 </html>

@@ -209,6 +209,15 @@ body{
 }
 .deck-pile.is-empty .deck-stack{opacity:.25;filter:grayscale(1)}
 .deck-pile.is-shuffling .deck-stack{animation:shuffleDeck .7s ease-in-out both}
+.deck-pile.can-draw{cursor:pointer;pointer-events:auto;filter:drop-shadow(0 0 10px rgba(255,220,92,.9));animation:dealerDrawPulse 1s ease-in-out infinite}
+.dealer-draw{position:absolute;left:50%;top:51%;z-index:18;transform:translate(-50%,-50%);width:min(270px,58%);padding:12px 14px;text-align:center;border:1px solid rgba(255,225,139,.7);border-radius:16px;background:rgba(41,91,63,.94);box-shadow:0 12px 32px rgba(11,42,27,.32);color:#fff;pointer-events:none}
+.dealer-draw small,.dealer-draw span{display:block;color:#ffe3a0;font-size:11px;font-weight:700}
+.dealer-draw strong{display:block;margin-top:6px;font-size:15px}
+.dealer-draw-card{height:0;overflow:hidden;transition:height .25s ease}
+.dealer-draw-card.has-card{height:86px;margin:7px auto 2px}
+.dealer-draw-card .card{display:inline-block;width:56px;height:82px;animation:dealerCardReveal .45s cubic-bezier(.2,.8,.25,1)}
+@keyframes dealerDrawPulse{50%{transform:translate(-50%,-50%) scale(1.05)}}
+@keyframes dealerCardReveal{0%{transform:rotateY(90deg) scale(.75);opacity:0}100%{transform:rotateY(0) scale(1);opacity:1}}
 .flying-card{
   position:absolute;width:54px;aspect-ratio:5/7;border-radius:7px;overflow:hidden;
   border:1px solid #d6b44e;background:#173d75;box-shadow:0 5px 12px rgba(0,0,0,.45);
@@ -282,10 +291,12 @@ body{
 .seat.is-me .seat-turn-timer{background:rgba(130,26,26,.95);}
 .seat.is-me .seat-name{background:linear-gradient(180deg,rgba(198,40,40,.92),rgba(150,28,28,.92));}
 .seat.is-active{transform:translate(-50%,-50%) scale(1.08);z-index:5;}
-.seat.seat-dense{min-width:120px;transform:translate(-50%,-50%) scale(.74);}
-.seat.seat-dense.is-active{transform:translate(-50%,-50%) scale(.82);}
+.seat.seat-dense{min-width:120px;transform:translate(-50%,-50%) scale(.80);}
+.seat.seat-dense.is-active{transform:translate(-50%,-50%) scale(.88);}
 .seat.seat-dense .card,.seat.seat-dense .card-back{width:60px;}
-.seat.seat-dense .seat-name{font-size:11px;}
+.seat.seat-dense .seat-name{gap:4px;padding:2px 10px 2px 2px;font-size:11px;}
+.seat.seat-dense .seat-avatar{width:27px;height:27px;}
+.seat.seat-dense .seat-name-text{letter-spacing:0;}
 .seat.is-active .seat-name{
   box-shadow:0 0 0 2px #ffd54f,0 0 18px rgba(255,213,79,.55),0 2px 8px rgba(0,0,0,.4);
   background:linear-gradient(180deg,rgba(60,55,30,.95),rgba(35,30,15,.95));
@@ -460,6 +471,9 @@ body{
 .last-round-review{margin-top:10px;padding:14px;border:1px solid #dfd1b7;border-radius:14px;background:linear-gradient(145deg,#fffdf8,#f7eddb);box-shadow:0 5px 18px rgba(86,61,26,.09);}
 .review-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px;color:#65441d;}
 .review-head h3{font-size:16px;margin:0;}.review-head strong{color:#a66b13;font-size:13px;}
+.review-cards{grid-column:1/-1;display:flex;gap:6px;margin-top:8px;min-height:58px;align-items:center}
+.review-cards .card,.review-cards .card-back{width:40px;height:56px;flex:0 0 40px;border-radius:5px;overflow:hidden}
+.review-cards img{display:block;width:100%;height:100%;object-fit:fill}
 .review-actions{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:11px;}
 .review-action{padding:4px 8px;border-radius:7px;background:#fff;border:1px solid #e5dac4;color:#66543b;font-size:11px;}
 .review-action b{color:#9b5f12;}

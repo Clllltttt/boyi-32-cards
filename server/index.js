@@ -185,25 +185,32 @@ function finishMatch(room) {
 function settle(room, contenders) {
   clearTimer(room);
   room.phase = "showdown";
-  const players = contenders && contenders.length ? contenders : active(room);
+  const unorderedPlayers = contenders && contenders.length ? contenders : active(room);
+  const players = unorderedPlayers.slice().sort((a, b) => {
+    const ai = room.players.indexOf(a), bi = room.players.indexOf(b);
+    return ((ai - room.dealer + room.players.length) % room.players.length) - ((bi - room.dealer + room.players.length) % room.players.length);
+  });
   if (!players.length) return;
   if (room.lastSeatThresholdFailed) {
+    players.forEach((player) => { player.revealed = true; });
     room.winnerId = null;
-    room.dealer = (room.dealer + 1) % room.players.length;
-    addEvent(room, "最后一家未达到普通8点门槛：本局无人获胜，公池 " + room.pot + " 积分结转下一局。");
+    room.dealer = room.players.indexOf(players[players.length - 1]);
+    addEvent(room, "最后一家未达到普通8点门槛：本局无人获胜，公池 " + room.pot + " 积分结转；由亮牌玩家 " + players[players.length - 1].name + " 接任下一局头家。");
     return matchComplete(room) ? finishMatch(room) : scheduleNextRound(room);
   }
   let winner = players[0];
-  let tie = false;
+  let tiedWinners = [winner];
   for (const player of players.slice(1)) {
     const result = compare(player.hand, winner.hand);
-    if (result > 0) { winner = player; tie = false; }
-    else if (result === 0) tie = true;
+    if (result > 0) { winner = player; tiedWinners = [player]; }
+    else if (result === 0) tiedWinners.push(player);
   }
-  if (tie) {
+  if (players.length > 1 || room.lastSeatThresholdDirectWin) players.forEach((player) => { player.revealed = true; });
+  if (tiedWinners.length > 1) {
     room.winnerId = null;
-    room.dealer = (room.dealer + 1) % room.players.length;
-    addEvent(room, "平局：无人收益，公池 " + room.pot + " 积分结转下一局。");
+    const nextDealer = tiedWinners[tiedWinners.length - 1];
+    room.dealer = room.players.indexOf(nextDealer);
+    addEvent(room, "平局：无人收益，公池 " + room.pot + " 积分结转；最后亮牌的并列最高者 " + nextDealer.name + " 接任下一局头家。");
   } else {
     // 最后一家通过8点门槛的直接获胜通吃；其他情况才受主动下注两倍上限约束。
     const prize = room.lastSeatThresholdDirectWin ? room.pot : Math.min(room.pot, winner.winCap * 2);
@@ -399,7 +406,7 @@ function startRound(room) {
   room.round = 1; room.bettingStage = "opening"; room.openingHasTableBet = false; room.openingAllPriorFolded = true; room.lastSeatThresholdFailed = false; room.lastSeatThresholdDirectWin = false; room.roundHasRaise = false; room.blindTableOpened = false; room.blindBottomChain = false;
   room.phase = "blind_choice"; room.winnerId = null; room.turnId = room.players[room.dealer % room.players.length].id;
   room.players.forEach((p, i) => {
-    p.hand = [deck[i * 2], deck[i * 2 + 1]]; p.folded = false; p.waiting = false; p.usedBottom = false;
+    p.hand = [deck[i * 2], deck[i * 2 + 1]]; p.folded = false; p.waiting = false; p.usedBottom = false; p.revealed = false;
     p.hasRaised = false; p.hasBetThisRound = false; p.hasTakenTurn = false; p.acted = false; p.stake = 1; p.winCap = 1; p.bluffUsed = false; p.rubReady = false; p.blind = true; p.hasLooked = false;
     p.score -= 1; p.timeoutCount = 0; p.autoManaged = false;
   });
@@ -409,7 +416,6 @@ function startRound(room) {
   armBlindChoiceTimer(room);
 }
 function view(room, viewerId) {
-  const isShowdown = room.phase === "showdown" || room.phase === "finished";
   const dealer = room.players[room.dealer % room.players.length];
   return {
     code: room.code, mode: room.mode, phase: room.phase, round: room.round, gameNo: room.gameNo, pot: room.pot, deadline: room.deadline, nextDeadline: room.nextDeadline || 0,
@@ -418,8 +424,8 @@ function view(room, viewerId) {
     blindChoice: room.phase === "blind_choice" && dealer && dealer.id === viewerId ? { cost: room.pot } : null,
     canViewCards: room.phase !== "lobby" && room.phase !== "blind_choice" && room.phase !== "showdown" && room.phase !== "finished" && !!room.players.find((p) => p.id === viewerId && !p.hasLooked),
     players: room.players.map((p) => ({ id: p.id, name: p.name, score: p.score, wins: p.wins || 0, folded: p.folded, waiting: p.waiting, rubReady: !!p.rubReady, blind: !!p.blind, autoManaged: p.autoManaged, connected: p.connected, disconnectDeadline: p.disconnectDeadline || 0,
-      hand: (isShowdown || (p.id === viewerId && p.hasLooked)) ? p.hand : null,
-      handText: isShowdown ? handText(p.hand) : null
+      hand: (p.revealed || (p.id === viewerId && p.hasLooked)) ? p.hand : null,
+      handText: p.revealed ? handText(p.hand) : null
     })),
     actions: room.phase === "playing" && room.turnId === viewerId ? (() => {
       const p = room.players.find((x) => x.id === viewerId);

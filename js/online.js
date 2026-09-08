@@ -7,6 +7,7 @@
   var rubOffset = { x: 0, y: 0 };
   var selectedMode = "classic";
   var selectedMatchType = "rounds", selectedRounds = 20, selectedMinutes = 20;
+  var resumePending = false;
   var modeNames = { classic: "32张经典", double: "看牌加倍", four: "经典四人" };
   var TOKEN_KEY = "boyi32_player_token", ROOM_KEY = "boyi32_room_code", NAME_KEY = "boyi32_player_name";
   var DECK_BASE = "assets/opendecks/svg cards/";
@@ -15,6 +16,13 @@
   var $ = function (id) { return document.getElementById(id); };
   function storageGet(key) { try { return localStorage.getItem(key) || ""; } catch (_error) { return ""; } }
   function storageSet(key, value) { try { if (value) localStorage.setItem(key, value); else localStorage.removeItem(key); } catch (_error) {} }
+  function roomFromUrl() { return new URLSearchParams(location.search).get("room") || ""; }
+  function setRoomInUrl(code) {
+    var url = new URL(location.href);
+    if (code) url.searchParams.set("room", code);
+    else url.searchParams.delete("room");
+    history.replaceState(null, "", url.pathname + url.search + url.hash);
+  }
   function makeToken() {
     var bytes = new Uint8Array(24);
     if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(bytes);
@@ -199,6 +207,7 @@
     $("lobby").classList.add("hidden"); $("room").classList.remove("hidden");
     $("online-result-screen").classList.add("hidden");
     storageSet(ROOM_KEY, state.code);
+    setRoomInUrl(state.code);
     $("room-code").textContent = state.code;
     $("phase").textContent = state.phase === "lobby" ? (modeNames[state.mode] || "等待玩家") : state.phase === "blind_choice" ? "头家选择" : state.phase === "rubbing" ? "搓牌中" : state.phase === "showdown" ? "本局结算" : state.phase === "finished" ? "比赛结束" : "第 " + state.round + " 轮";
     var progress = state.matchType === "time" ? ("时长模式 · " + state.durationMinutes + "分钟") : ("局数模式 · " + state.gameNo + "/" + state.maxRounds + "局");
@@ -359,11 +368,17 @@
     syncBlindOverlay(); syncRubOverlay();
   });
   function resumeRoom() {
-    var code = storageGet(ROOM_KEY);
+    if (resumePending || state) return;
+    var code = roomFromUrl() || storageGet(ROOM_KEY);
     if (!code) return;
+    resumePending = true;
+    notice("正在恢复房间 " + code.toUpperCase() + "…");
     emit("room:resume", { code: code, token: playerToken }, function (result) {
-      if (!result.ok) storageSet(ROOM_KEY, "");
-      else notice("已恢复房间连接。");
+      resumePending = false;
+      if (!result.ok) {
+        storageSet(ROOM_KEY, "");
+        setRoomInUrl("");
+      } else notice("已恢复房间连接。");
     });
   }
   socket.on("connect", resumeRoom);
