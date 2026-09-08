@@ -41,6 +41,7 @@
     var turn = state.players.find(function (p) { return p.id === state.turnId; });
     if (state.phase === "blind_choice") {
       var blindSeconds = state.deadline ? Math.max(0, Math.ceil((state.deadline - Date.now()) / 1000)) : 30;
+      if (state.turnId === state.selfId && window.GAME_AUDIO) window.GAME_AUDIO.tick(blindSeconds);
       $("turn").textContent = state.blindChoice ? ("你是头家 · 请选择是否蒙吃 · " + blindSeconds + "s") : ("等待头家选择是否蒙吃 · " + blindSeconds + "s");
       return;
     }
@@ -64,6 +65,7 @@
       return;
     }
     var seconds = state.deadline ? Math.max(0, Math.ceil((state.deadline - Date.now()) / 1000)) : 0;
+    if (turn.id === state.selfId && window.GAME_AUDIO) window.GAME_AUDIO.tick(seconds);
     $("turn").textContent = !turn.connected && !turn.autoManaged ? ("等待 " + turn.name + " 重连 · " + seconds + "s") : "轮到 " + turn.name + (turn.autoManaged ? "（托管思考中）" : " · " + seconds + "s");
   }
   function renderRanking() {
@@ -131,6 +133,7 @@
     }
     rubOffset = { x: dx, y: dy };
     var ratio = Math.min(1, distance / 215);
+    if (window.GAME_AUDIO) window.GAME_AUDIO.updateRub(ratio);
     slider.style.transform = "translate(" + dx + "px," + dy + "px) rotate(" + (dx / 40) + "deg)";
     $("online-rub-progress-bar").style.width = Math.round(ratio * 100) + "%";
     $("online-rub-progress-text").textContent = ratio < .42 ? "先看边上的花点 · 已露出 " + Math.round(ratio * 100) + "%" : "不确定就继续慢慢搓 · 已露出 " + Math.round(ratio * 100) + "%";
@@ -138,6 +141,7 @@
   }
   function finishRubCards() {
     if (!rubActive) return;
+    if (window.GAME_AUDIO) { window.GAME_AUDIO.stopRub(); window.GAME_AUDIO.play("flip"); }
     rubActive = false; rubDragging = false; rubStart = null;
     var slider = $("online-rub-slider"), hidden = $("online-rub-hidden-face").parentElement;
     hidden.classList.add("rank-revealed");
@@ -174,6 +178,7 @@
     if (me && me.hand && state.phase !== "showdown" && state.phase !== "finished" && state.gameNo !== rubbedGameNo) showRubCards(me.hand, state.gameNo);
     if ((state.phase === "lobby" || state.phase === "blind_choice" || state.phase === "showdown" || state.phase === "finished") && rubActive) {
       rubActive = false; rubDragging = false;
+      if (window.GAME_AUDIO) window.GAME_AUDIO.stopRub();
       $("online-rub-overlay").classList.add("hidden");
     }
   }
@@ -199,12 +204,14 @@
     renderTurnText();
     var players = $("players"); players.innerHTML = "";
     state.players.forEach(function (p, index) {
-      var el = document.createElement("div"); el.className = "player" + (p.connected ? "" : " disconnected");
+      var el = document.createElement("div"); el.className = "player" + (p.connected ? "" : " disconnected") + (p.id === state.dealerId ? " is-dealer" : "");
       var angle = (90 + index * 360 / state.players.length) * Math.PI / 180;
       el.style.left = (50 + 43 * Math.cos(angle)) + "%";
       el.style.top = (50 + 40 * Math.sin(angle)) + "%";
       el.style.setProperty("--seat-scale", state.players.length > 6 ? ".70" : state.players.length > 4 ? ".82" : "1");
-      el.innerHTML = '<div class="name' + (p.id === state.turnId ? ' turn' : '') + '">' + p.name + (p.id === state.hostId ? ' · 房主' : '') + '</div>' +
+      el.style.setProperty("--avatar-x", (index % 4) * 100 / 3 + "%");
+      el.style.setProperty("--avatar-y", Math.floor((index % 8) / 4) * 100 + "%");
+      el.innerHTML = '<div class="name' + (p.id === state.turnId ? ' turn' : '') + '"><span class="player-avatar" aria-hidden="true"></span>' + p.name + (p.id === state.hostId ? ' · 房主' : '') + (p.id === state.dealerId ? ' · 头家' : '') + '</div>' +
         '<div class="chips">积分 ' + p.score + '</div><div class="cards">' + card(p.hand && p.hand[0]) + card(p.hand && p.hand[1]) + '</div>' +
         '<div class="status">' + (!p.connected ? (p.autoManaged ? '断线托管中' : '<span data-disconnect-deadline="' + p.disconnectDeadline + '">断线重连中</span>') : p.folded ? '已弃牌' : p.waiting ? '等待比牌' : state.phase === 'blind_choice' ? (p.id === state.turnId ? '选择是否蒙吃' : '等待头家') : state.phase === 'rubbing' ? (p.blind ? '蒙牌中' : p.rubReady ? '已搓牌' : '搓牌中') : p.autoManaged ? '托管中' : p.id === state.winnerId ? '本局获胜' : p.handText || '') + '</div>';
       players.appendChild(el);
@@ -259,15 +266,36 @@
   $("online-rub-slider").addEventListener("pointerdown", function (e) {
     if (!rubActive) return;
     rubDragging = true; rubStart = { x: e.clientX - rubOffset.x, y: e.clientY - rubOffset.y };
+    if (window.GAME_AUDIO) window.GAME_AUDIO.startRub();
     this.classList.add("dragging"); this.setPointerCapture(e.pointerId); e.preventDefault();
   });
   $("online-rub-slider").addEventListener("pointermove", function (e) { if (rubDragging && rubActive) updateRubSlide(e.clientX - rubStart.x, e.clientY - rubStart.y); });
-  ["pointerup", "pointercancel"].forEach(function (name) { $("online-rub-slider").addEventListener(name, function () { rubDragging = false; rubStart = null; this.classList.remove("dragging"); }); });
+  ["pointerup", "pointercancel"].forEach(function (name) { $("online-rub-slider").addEventListener(name, function () { rubDragging = false; rubStart = null; this.classList.remove("dragging"); if (window.GAME_AUDIO) window.GAME_AUDIO.stopRub(); }); });
   $("online-rub-reveal").onclick = finishRubCards;
   $("online-blind-eat").onclick = function () { emit("game:blind_choice", { choice: "blind_table" }); };
   $("online-blind-bottom").onclick = function () { emit("game:blind_choice", { choice: "blind_bottom" }); };
   $("online-blind-look").onclick = function () { emit("game:blind_choice", { choice: "look" }); };
-  socket.on("room_state", function (next) { state = next; notice(""); render(); syncBlindOverlay(); syncRubOverlay(); });
+  function syncSounds(previous, next) {
+    if (!window.GAME_AUDIO || !previous) return;
+    if (next.gameNo > previous.gameNo) {
+      window.GAME_AUDIO.play("shuffle");
+      setTimeout(function () { window.GAME_AUDIO.playDealSequence(next.players.length * 2); }, 260);
+    }
+    if (next.pot > previous.pot) window.GAME_AUDIO.play("bet");
+    if (next.turnId !== previous.turnId) {
+      window.GAME_AUDIO.resetCountdown();
+      if (next.turnId === next.selfId && (next.phase === "playing" || next.phase === "blind_choice")) window.GAME_AUDIO.cue("turn");
+    }
+    if (next.phase === "showdown" && previous.phase !== "showdown") {
+      var revealed = next.players.filter(function (player) { return !player.folded; }).length;
+      for (var i = 0; i < revealed; i++) (function (index) { setTimeout(function () { window.GAME_AUDIO.play("flip"); }, index * 180); })(i);
+    }
+    if (next.winnerId && next.winnerId !== previous.winnerId) {
+      window.GAME_AUDIO.cue("win");
+      setTimeout(function () { window.GAME_AUDIO.play("payout"); }, 420);
+    }
+  }
+  socket.on("room_state", function (next) { var previous = state; state = next; syncSounds(previous, next); notice(""); render(); syncBlindOverlay(); syncRubOverlay(); });
   function resumeRoom() {
     var code = storageGet(ROOM_KEY);
     if (!code) return;

@@ -414,7 +414,7 @@ function view(room, viewerId) {
   return {
     code: room.code, mode: room.mode, phase: room.phase, round: room.round, gameNo: room.gameNo, pot: room.pot, deadline: room.deadline, nextDeadline: room.nextDeadline || 0,
     selfId: viewerId, matchType: room.matchType, maxRounds: room.maxRounds, durationMinutes: room.durationMinutes, endAt: room.endAt || 0, matchStartedAt: room.matchStartedAt || 0,
-    hostId: room.hostId, turnId: room.turnId, winnerId: room.winnerId, events: room.events, blindTableOpened: !!room.blindTableOpened,
+    hostId: room.hostId, dealerId: dealer ? dealer.id : null, turnId: room.turnId, winnerId: room.winnerId, events: room.events, blindTableOpened: !!room.blindTableOpened,
     blindChoice: room.phase === "blind_choice" && dealer && dealer.id === viewerId ? { cost: room.pot } : null,
     canViewCards: room.phase !== "lobby" && room.phase !== "blind_choice" && room.phase !== "showdown" && room.phase !== "finished" && !!room.players.find((p) => p.id === viewerId && !p.hasLooked),
     players: room.players.map((p) => ({ id: p.id, name: p.name, score: p.score, wins: p.wins || 0, folded: p.folded, waiting: p.waiting, rubReady: !!p.rubReady, blind: !!p.blind, autoManaged: p.autoManaged, connected: p.connected, disconnectDeadline: p.disconnectDeadline || 0,

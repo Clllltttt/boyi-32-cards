@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>32张棋牌游戏 · 网站</title>
-<link rel="stylesheet" href="css/style.css?v=20260907-final-result">
+<link rel="stylesheet" href="css/style.css?v=20260908-audio-v1">
 </head>
 <body>
 <div class="wrap">
@@ -93,12 +93,23 @@
         <div class="table">
           <div class="table-inner"></div>
           <div class="dealer-chip hidden" id="dealer-chip">● 头家</div>
+          <div class="deck-pile" id="deck-pile" aria-label="牌堆剩余32张">
+            <div class="deck-stack" aria-hidden="true">
+              <img src="assets/opendecks/svg%20cards/card%20backs/card%20back%20blue.svg" alt="">
+              <img src="assets/opendecks/svg%20cards/card%20backs/card%20back%20blue.svg" alt="">
+              <img src="assets/opendecks/svg%20cards/card%20backs/card%20back%20blue.svg" alt="">
+              <img src="assets/opendecks/svg%20cards/card%20backs/card%20back%20blue.svg" alt="">
+            </div>
+            <strong id="deck-count">32张</strong>
+          </div>
           <div class="pot-center">
             <div class="pot-label">公 池</div>
             <div class="pot-val" id="pot-val">0</div>
             <div class="pot-sub" id="pot-sub">等待开局…</div>
           </div>
+          <div class="showdown-callout hidden" id="showdown-callout" aria-live="polite"></div>
           <div id="seats"></div>
+          <div class="deal-fx" id="deal-fx" aria-hidden="true"></div>
           <div class="coin-fx" id="coin-fx" aria-hidden="true"></div>
         </div>
       </div>
@@ -122,9 +133,11 @@
       <div class="status-row">
         <span class="pill" id="phase-pill">准备中</span>
         <span class="muted" id="hint"></span>
+        <button type="button" class="review-toggle" id="review-toggle" disabled>上局回顾</button>
       </div>
 
       <div class="result-banner" id="result-banner"></div>
+      <section class="last-round-review hidden" id="last-round-review" aria-live="polite"></section>
       <div class="log" id="log"></div>
     </div>
     <section class="final-screen hidden" id="solo-result-screen" aria-live="polite">
@@ -229,13 +242,14 @@
       </div>
     </div>
     <div class="rub-progress"><i id="rub-progress-bar"></i></div>
-    <div class="rub-foot"><span id="rub-progress-text">拖动上牌，慢慢露出底牌</span><button id="rub-reveal" type="button">直接看牌</button></div>
+    <div class="rub-foot"><span id="rub-progress-text">拖动上牌，慢慢露出底牌</span><div><button id="rub-skip-match" type="button">本场不再搓牌</button><button id="rub-reveal" type="button">直接看牌</button></div></div>
   </div>
 </div>
 
 <script src="js/data.js"></script>
 <script src="js/engine.js"></script>
-<script src="js/game.js?v=20260908-ai-personality"></script>
+<script src="js/audio.js?v=20260908-audio-v1"></script>
+<script src="js/game.js?v=20260908-audio-v1"></script>
 <script src="js/tables.js"></script>
   <script src="js/rules.js?v=20260907-blind-dealer"></script>
 <script>

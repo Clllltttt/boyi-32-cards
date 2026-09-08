@@ -8,7 +8,10 @@
   var DECK_SUIT = { "红桃": "hearts", "方块": "diamonds", "黑桃": "spades", "梅花": "clubs" };
   var DECK_RANK = { "J": "jack", "Q": "queen" };
   var DECK_BASE = "assets/opendecks/svg cards/";
-  var SEAT_COLORS = ["#c62828", "#3d6ea5", "#7b5ea7", "#2e7d32", "#d97b29", "#00838f", "#ad1457", "#5d4037"];
+  function avatarStyle(index) {
+    var col = index % 4, row = Math.floor((index % 8) / 4);
+    return "--avatar-x:" + (col * 100 / 3) + "%;--avatar-y:" + (row * 100) + "%";
+  }
 
   var G = {
     players: [], n: 4, dealer: -1, round: 1, pot: 0, phase: "setup",
@@ -18,7 +21,10 @@
     seatTimerLeft: null, gameOver: false,
     timeoutCount: 0, autoManaged: false,
     session: 0,
-    winner: null, tiePlayers: null, showdownPlayers: [], ante: 1
+    winner: null, tiePlayers: null, showdownPlayers: [], ante: 1,
+    deck: [], shuffleCount: 0, dealing: false,
+    skipRubForMatch: false, roundActions: [], roundStartScores: [], roundStartPot: 0,
+    lastRoundReview: null, revealingPlayer: null
   };
   var cfg = { n: 6, timerOn: true, mode: "rounds", rounds: 20, minutes: 20 };
 
@@ -78,6 +84,7 @@
     }
     rubOffset = { x: dx, y: dy };
     var ratio = Math.min(1, distance / RUB_REVEAL_DISTANCE);
+    if (window.GAME_AUDIO) window.GAME_AUDIO.updateRub(ratio);
     slider.style.transform = "translate(" + dx + "px," + dy + "px) rotate(" + (dx / 40) + "deg)";
     $("rub-progress-bar").style.width = Math.round(ratio * 100) + "%";
     $("rub-progress-text").textContent = ratio >= 1
@@ -89,6 +96,7 @@
   }
   function finishRubCards() {
     if (!rubResolve) return;
+    if (window.GAME_AUDIO) { window.GAME_AUDIO.stopRub(); window.GAME_AUDIO.play("flip"); }
     var resolve = rubResolve;
     rubResolve = null;
     rubDragging = false;
@@ -113,6 +121,7 @@
   }
   function cancelRubCards() {
     if (!rubResolve) return;
+    if (window.GAME_AUDIO) window.GAME_AUDIO.stopRub();
     var resolve = rubResolve;
     rubResolve = null;
     rubDragging = false;
@@ -122,6 +131,7 @@
     resolve();
   }
   function showRubCards(hand) {
+    if (G.skipRubForMatch) return Promise.resolve();
     return new Promise(function (resolve) {
       var slider = $("rub-slider");
       rubResolve = resolve;
@@ -144,6 +154,7 @@
   $("rub-slider").addEventListener("pointerdown", function (e) {
     if (!rubResolve) return;
     rubDragging = true;
+    if (window.GAME_AUDIO) window.GAME_AUDIO.startRub();
     rubStart = { x: e.clientX - rubOffset.x, y: e.clientY - rubOffset.y };
     this.classList.add("dragging");
     this.setPointerCapture(e.pointerId);
@@ -157,11 +168,16 @@
     $("rub-slider").addEventListener(name, function () {
       if (!rubDragging) return;
       rubDragging = false;
+      if (window.GAME_AUDIO) window.GAME_AUDIO.stopRub();
       rubStart = null;
       this.classList.remove("dragging");
     });
   });
   $("rub-reveal").addEventListener("click", finishRubCards);
+  $("rub-skip-match").addEventListener("click", function () {
+    G.skipRubForMatch = true;
+    finishRubCards();
+  });
 
   /* ---------- 头家蒙吃选择 ---------- */
   function stopBlindChoiceTimer() {
@@ -170,6 +186,7 @@
   }
   function finishBlindChoice(choice) {
     if (!blindChoiceResolve) return;
+    if (window.GAME_AUDIO) window.GAME_AUDIO.resetCountdown();
     var resolve = blindChoiceResolve;
     blindChoiceResolve = null;
     stopBlindChoiceTimer();
@@ -184,6 +201,7 @@
     var duration = 30, startedAt = Date.now();
     function paint() {
       var left = Math.max(0, duration - (Date.now() - startedAt) / 1000);
+      if (window.GAME_AUDIO) window.GAME_AUDIO.tick(left);
       $("blind-countdown-text").textContent = Math.ceil(left) + "s";
       $("blind-countdown-bar").style.width = (left / duration * 100) + "%";
       if (left > 0) return;
@@ -203,6 +221,7 @@
   }
   function askBlindChoice(cost) {
     return new Promise(function (resolve) {
+      if (window.GAME_AUDIO) { window.GAME_AUDIO.resetCountdown(); window.GAME_AUDIO.cue("turn"); }
       blindChoiceResolve = resolve;
       $("blind-eat-btn").textContent = "蒙吃桌面 +" + cost;
       $("blind-bottom-btn").textContent = "蒙吃底注 +" + G.ante;
@@ -212,6 +231,7 @@
   }
   function cancelBlindChoice() {
     if (!blindChoiceResolve) return;
+    if (window.GAME_AUDIO) window.GAME_AUDIO.resetCountdown();
     finishBlindChoice(null);
   }
   $("blind-eat-btn").addEventListener("click", function () { finishBlindChoice("blind_table"); });
@@ -243,6 +263,7 @@
       if (p.folded) cls.push("folded");
       if (p.out) cls.push("out");
       if (p.isWinner) cls.push("winner");
+      if (G.revealingPlayer === p) cls.push("is-revealing");
       var isActive = G.phase === "betting" && G.players[G.currentPlayer] === p && !p.folded && !p.out;
       if (isActive) cls.push("is-active");
 
@@ -251,15 +272,16 @@
       seat.style.left = left + "%";
       seat.style.top = top + "%";
 
-      var seatColor = SEAT_COLORS[i % 8];
       // 座位号按当前头家动态计算：头家永远为1号，之后按行动顺序递增。
       var seatNo = G.dealer >= 0 ? ((i - G.dealer + n) % n) + 1 : i + 1;
-      var avatarChar = seatNo;
+      if (seatNo === 1) seat.classList.add("is-dealer");
       if (seatNo === 1) dealerPosition = { left: left, top: top };
 
-      // 手牌（他人背面，我自己和揭牌者正面）
+      // 发牌阶段只显示已经真正发到座位上的牌，避免动画尚未到达就出现两张牌。
       var handHTML;
-      if (p.revealed) handHTML = cardHTML(p.hand[0], { reveal: true }) + cardHTML(p.hand[1], { reveal: true });
+      if (G.dealing) {
+        handHTML = p.hand.filter(Boolean).map(function () { return cardBackHTML(); }).join("");
+      } else if (p.revealed) handHTML = cardHTML(p.hand[0], { reveal: true }) + cardHTML(p.hand[1], { reveal: true });
       else if (p.isHuman && p.hasLooked) handHTML = cardHTML(p.hand[0]) + cardHTML(p.hand[1]);
       else handHTML = cardBackHTML() + cardBackHTML();
 
@@ -272,7 +294,7 @@
 
       var nameHTML =
         '<div class="seat-name">' +
-          '<div class="seat-avatar" style="background:' + seatColor + '">' + avatarChar + '</div>' +
+          '<div class="seat-avatar" style="' + avatarStyle(i) + '" aria-label="' + p.name + '头像"></div>' +
           '<span class="seat-name-text">' + p.name + (seatNo === 1 ? " · 头家" : "") + '</span>' +
         '</div>';
 
@@ -301,10 +323,25 @@
     } else { dc.classList.add("hidden"); dp.classList.add("hidden"); }
   }
   function renderPot() { $("pot-val").textContent = G.pot; }
+  function showShowdownCallout(text, winner) {
+    var el = $("showdown-callout");
+    if (!el) return;
+    if (!text) { el.classList.add("hidden"); el.classList.remove("winner"); el.textContent = ""; return; }
+    el.textContent = text;
+    el.classList.toggle("winner", !!winner);
+    el.classList.remove("hidden");
+  }
+  function renderDeckPile() {
+    var pile = $("deck-pile"), count = G.deck ? G.deck.length : 0;
+    if (!pile) return;
+    $("deck-count").textContent = count + "张";
+    pile.setAttribute("aria-label", "牌堆剩余" + count + "张");
+    pile.classList.toggle("is-empty", count === 0);
+  }
   function renderMyZone() {
     var me = G.players[0];
     var zone = $("my-hand");
-    if (!me || G.phase === "setup" || me.out || !me.hand[0]) {
+    if (!me || G.phase === "setup" || G.dealing || me.out || !me.hand[0]) {
       zone.innerHTML = '<span class="muted">' + (G.phase === "setup" ? "等待开局…" : "等待发牌…") + "</span>";
       return;
     }
@@ -373,7 +410,56 @@
     $("game-screen").classList.add("hidden");
     $("solo-result-screen").classList.remove("hidden");
   }
-  function renderAll() { renderSeats(); renderPot(); renderMyZone(); renderPills(); }
+  function renderAll() { renderSeats(); renderPot(); renderDeckPile(); renderMyZone(); renderPills(); }
+
+  function escapeHTML(value) {
+    return String(value).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function recordRoundAction(p, action, amount) {
+    G.roundActions.push({ player: p.name, action: action, amount: amount || 0, pot: G.pot });
+  }
+  function captureRoundReview(winner, prize, finalPot) {
+    G.lastRoundReview = {
+      round: G.round,
+      winner: winner ? winner.name : G.lastSeatThresholdFailed ? "无人获胜" : "平局",
+      prize: prize || 0,
+      finalPot: finalPot,
+      actions: G.roundActions.slice(),
+      players: G.players.map(function (p, i) {
+        return {
+          name: p.name, folded: p.folded, won: p === winner,
+          hand: p.hand[0] && p.hand[1] ? E.handDesc(E.evaluate(p.hand[0], p.hand[1])) : "未发牌",
+          change: p.chips - (G.roundStartScores[i] || 0)
+        };
+      })
+    };
+    $("review-toggle").disabled = false;
+    renderLastRoundReview();
+  }
+  function renderLastRoundReview() {
+    var box = $("last-round-review"), review = G.lastRoundReview;
+    if (!box || !review) return;
+    var actions = review.actions.map(function (item) {
+      return '<span class="review-action"><b>' + escapeHTML(item.player) + '</b> ' + escapeHTML(item.action) +
+        (item.amount ? " +" + item.amount : "") + " · 公池" + item.pot + "</span>";
+    }).join("");
+    var players = review.players.map(function (item) {
+      return '<div class="review-player' + (item.won ? " won" : "") + (item.folded ? " folded" : "") + '">' +
+        '<b>' + escapeHTML(item.name) + (item.folded ? " · 弃牌" : "") + '</b><em>' + (item.change > 0 ? "+" : "") + item.change +
+        '</em><span>' + escapeHTML(item.hand) + '</span></div>';
+    }).join("");
+    box.innerHTML = '<div class="review-head"><h3>第 ' + review.round + ' 局回顾</h3><strong>' + escapeHTML(review.winner) +
+      (review.prize ? " 赢得 " + review.prize : "") + " · 最终公池 " + review.finalPot + '</strong></div>' +
+      '<div class="review-actions">' + actions + '</div><div class="review-players">' + players + '</div>';
+  }
+  $("review-toggle").addEventListener("click", function () {
+    var box = $("last-round-review");
+    if (!G.lastRoundReview) return;
+    box.classList.toggle("hidden");
+    this.textContent = box.classList.contains("hidden") ? "上局回顾" : "收起回顾";
+  });
 
   /* ---------- 金币流动动画 ---------- */
   function pointInTable(el) {
@@ -415,6 +501,7 @@
     return Promise.all(jobs);
   }
   function queueCoinsToPot(p, amount) {
+    if (window.GAME_AUDIO) window.GAME_AUDIO.play("bet");
     var playerIndex = G.players.indexOf(p);
     requestAnimationFrame(function () {
       var seats = document.querySelectorAll("#seats .seat");
@@ -423,7 +510,78 @@
   }
   function sendPotToWinner(p, amount) {
     var playerIndex = G.players.indexOf(p), seats = document.querySelectorAll("#seats .seat");
+    if (window.GAME_AUDIO) window.GAME_AUDIO.play("payout");
     return flyCoins(document.querySelector(".pot-center"), seats[playerIndex] && seats[playerIndex].querySelector(".seat-chips"), amount);
+  }
+
+  /* ---------- 牌堆与发牌动画 ---------- */
+  async function shuffleDeckForNextRound(session, reason) {
+    var pile = $("deck-pile");
+    if (reason) log(reason + "，重新洗满 <b>32张</b>。", "hl");
+    G.deck = shuffle(D.CARDS);
+    G.shuffleCount++;
+    if (window.GAME_AUDIO) window.GAME_AUDIO.play("shuffle");
+    renderDeckPile();
+    if (pile) pile.classList.add("is-shuffling");
+    await delay(720);
+    if (pile) pile.classList.remove("is-shuffling");
+    return isCurrentSession(session);
+  }
+  function animateDealCard(playerIndex) {
+    if (window.GAME_AUDIO) window.GAME_AUDIO.play("deal");
+    var layer = $("deal-fx"), pile = $("deck-pile");
+    var seats = document.querySelectorAll("#seats .seat");
+    var target = seats[playerIndex] && seats[playerIndex].querySelector(".seat-hand");
+    var from = pointInTable(pile), to = pointInTable(target || seats[playerIndex]);
+    if (!layer || !from || !to) return delay(70);
+    var flying = document.createElement("div");
+    flying.className = "flying-card";
+    flying.innerHTML = '<img src="' + encodeURI(DECK_BASE + "card backs/card back blue.svg") + '" alt="">';
+    flying.style.left = from.x + "px";
+    flying.style.top = from.y + "px";
+    layer.appendChild(flying);
+    var dx = to.x - from.x, dy = to.y - from.y;
+    var turn = playerIndex % 2 ? 7 : -7;
+    var animation = flying.animate([
+      { transform: "translate(-50%,-50%) scale(.94) rotate(0deg)", opacity: 1 },
+      { transform: "translate(" + (dx * .52 - 27) + "px," + (dy * .52 - 38) + "px) scale(1.03) rotate(" + (turn * .55) + "deg)", opacity: 1, offset: .52 },
+      { transform: "translate(" + (dx - 27) + "px," + (dy - 38) + "px) scale(.88) rotate(" + turn + "deg)", opacity: .18 }
+    ], { duration: 260, easing: "cubic-bezier(.22,.7,.25,1)", fill: "forwards" });
+    return new Promise(function (resolve) {
+      animation.onfinish = function () { flying.remove(); resolve(); };
+      animation.oncancel = function () { flying.remove(); resolve(); };
+    });
+  }
+  async function dealFromPersistentDeck(session) {
+    var activeIndexes = [];
+    G.players.forEach(function (p, i) { if (!p.out) activeIndexes.push(i); });
+    var required = activeIndexes.length * 2;
+    if (G.deck.length < required) {
+      var left = G.deck.length;
+      if (!await shuffleDeckForNextRound(session, "牌堆剩余 <b>" + left + "张</b>，不足下一局所需的 <b>" + required + "张</b>")) return false;
+    }
+    var order = [];
+    for (var offset = 0; offset < G.n; offset++) {
+      var idx = (G.dealer + offset) % G.n;
+      if (!G.players[idx].out) order.push(idx);
+    }
+    G.dealing = true;
+    renderAll();
+    for (var pass = 0; pass < 2; pass++) {
+      for (var i = 0; i < order.length; i++) {
+        if (!isCurrentSession(session)) { G.dealing = false; return false; }
+        var playerIndex = order[i];
+        var card = G.deck.shift();
+        renderDeckPile();
+        await animateDealCard(playerIndex);
+        G.players[playerIndex].hand[pass] = card;
+        renderAll();
+        await delay(45);
+      }
+    }
+    G.dealing = false;
+    renderAll();
+    return true;
   }
 
   /* ---------- 设置 ---------- */
@@ -495,9 +653,15 @@
       });
     }
     G.dealer = -1; G.round = 1; G.pot = 0; G.gameOver = false; G.showdownPlayers = [];
+    G.deck = shuffle(D.CARDS); G.shuffleCount = 1; G.dealing = false;
+    G.skipRubForMatch = false; G.roundActions = []; G.roundStartScores = []; G.roundStartPot = 0;
+    G.lastRoundReview = null; G.revealingPlayer = null;
     G.timeoutCount = 0; G.autoManaged = false;
     $("log").innerHTML = "";
     var b = $("result-banner"); b.className = "result-banner"; b.innerHTML = "";
+    $("review-toggle").disabled = true; $("review-toggle").textContent = "上局回顾";
+    $("last-round-review").classList.add("hidden"); $("last-round-review").innerHTML = "";
+    showShowdownCallout("");
     renderMatchRanking();
     log("游戏开始：<b>" + G.n + "人局</b>，每人从 <b>0 积分</b>开始，底注 <b>" + G.ante + "</b>。");
     renderAll();
@@ -521,6 +685,10 @@
     if (isCurrentSession(session) && G.gameOver) finishGame();
   }
   async function playRound(session) {
+    G.roundActions = [];
+    G.roundStartScores = G.players.map(function (p) { return p.chips; });
+    G.roundStartPot = G.pot;
+    G.revealingPlayer = null; showShowdownCallout("");
     G.showdownPlayers = []; G.lastSeatThresholdFailed = false; G.lastSeatThresholdDirectWin = false;
     G.blindTableOpened = false; G.dealerBlindPlanned = ""; G.blindBottomChain = false; G.tableRaisesThisRound = 0; G.humanBlindPending = false; G.humanBlind = false;
     G.players.forEach(function (p) {
@@ -533,16 +701,16 @@
     G.phase = "deal"; renderAll(); await delay(500);
     if (!isCurrentSession(session)) return;
 
-    var deck = shuffle(D.CARDS);
-    G.players.forEach(function (p, i) { if (!p.out) p.hand = [deck[i * 2], deck[i * 2 + 1]]; });
+    if (!await dealFromPersistentDeck(session)) return;
     var dealerPlayer = G.players[G.dealer];
     G.humanBlindPending = !!(dealerPlayer && dealerPlayer.isHuman && !G.autoManaged);
-    log("发牌完成，本局底注各 <b>" + G.ante + "</b> 积分。");
+    log("发牌完成，牌堆剩余 <b>" + G.deck.length + "张</b>；本局底注各 <b>" + G.ante + "</b> 积分。");
     renderAll();
     G.players.forEach(function (p) {
       if (p.out) return;
       var ante = G.ante;
       p.chips -= ante; p.roundStake += ante; G.pot += ante; queueCoinsToPot(p, ante);
+      recordRoundAction(p, "底注", ante);
     });
     renderAll(); await delay(400);
     if (!isCurrentSession(session)) return;
@@ -574,7 +742,17 @@
         // 用户风格：50%先看牌、30%蒙吃底注、20%蒙吃桌面。
         G.dealerBlindPlanned = blindRoll < .20 ? "blind_table" : blindRoll < .50 ? "blind_bottom" : "";
       }
-      // 非头家可以一直选择看牌，不在发牌后强制打开搓牌层。
+      // 非头家的看牌流程在头家选择完成后统一触发。
+    }
+
+    // 非头家在自己的两张牌均发到位后进入搓牌；选择“本场不再搓牌”后，后续各局直接看牌。
+    var human = G.players[0];
+    if (dealerPlayer && !dealerPlayer.isHuman && human && !G.autoManaged) {
+      human.hasLooked = true;
+      renderAll();
+      await showRubCards(human.hand);
+      if (!isCurrentSession(session)) return;
+      renderAll();
     }
 
     G.phase = "betting"; G.bettingRound = 0; G.lastRaiseRound = 0;
@@ -636,7 +814,7 @@
       if (dealerBlindTurn) {
         if (!p.isHuman) {
           startSeatTimer(30);
-          await delay(5000 + Math.floor(Math.random() * 3001));
+          await delay(3000 + Math.floor(Math.random() * 2501));
           stopSeatTimer();
           if (!isCurrentSession(session)) return;
         }
@@ -762,6 +940,7 @@
     p.lastAction = "蒙吃桌面";
     G.blindTableOpened = true;
     G.tableRaisesThisRound = (G.tableRaisesThisRound || 0) + 1;
+    recordRoundAction(p, "蒙吃桌面", bet);
     log("头家 <b>" + p.name + "</b> 蒙吃桌面，下注 <b>" + bet + "</b>，公池 → <b>" + G.pot + "</b>；后续玩家不能吃底注或半池，头家之后可自由看牌。");
     return true;
   }
@@ -770,6 +949,7 @@
     p.chips -= bet; p.roundStake += bet; G.pot += bet;
     p.winCap = bet; p.hasBetThisRound = true; p.usedBottom = true; p.lastAction = "蒙吃底注";
     queueCoinsToPot(p, bet);
+    recordRoundAction(p, "蒙吃底注", bet);
     log("<b>" + p.name + "</b> 蒙吃一个底注（+" + bet + "），公池 → <b>" + G.pot + "</b>；下一家可继续蒙吃底注。");
     return false;
   }
@@ -786,6 +966,7 @@
       p.tableRaiseCount += 1;
       G.tableRaisesThisRound = (G.tableRaisesThisRound || 0) + 1;
       p.lastAction = "吃桌面";
+      recordRoundAction(p, "吃桌面", bet);
       log("<b>" + p.name + "</b> 吃桌面，下注 <b>" + bet + "</b>，公池 → <b>" + G.pot + "</b>。");
       return true;
     } else if (action === "call" || action === "blindcall" || action === "half") {
@@ -795,32 +976,53 @@
       queueCoinsToPot(p, cb);
       p.hasBetThisRound = true; p.usedBottom = true;
       p.lastAction = action === "half" ? "吃半池" : action === "blindcall" ? "蒙吃底注" : "吃底注";
+      recordRoundAction(p, p.lastAction, cb);
       log("<b>" + p.name + "</b> " + (action === "half" ? "吃半个公池" : action === "blindcall" ? "蒙吃一个底注" : "吃一个底注") + "（+" + cb + "），公池 → <b>" + G.pot + "</b>。" + (action === "blindcall" ? " 下一家可继续蒙吃底注。" : ""));
       return false;
     } else if (action === "pass") {
       p.waitingShowdown = true;
       p.lastAction = "等待比牌";
+      recordRoundAction(p, "等待比牌", 0);
       log("<b>" + p.name + "</b> 选择等待比牌：不再追加下注，保留比牌资格。", "hl");
       return false;
     } else if (action === "fold") {
       p.folded = true;
       p.lastAction = "弃牌";
+      recordRoundAction(p, "弃牌", 0);
       log("<b>" + p.name + "</b> 弃牌（已投入不退）。");
       return false;
     }
     return false;
   }
+  function aiThinkTime(p, action, opts, isOpeningRound) {
+    var ev = E.evaluate(p.hand[0], p.hand[1]);
+    var pressure = G.tableRaisesThisRound || 0;
+    var obvious = action === "fold" || (action === "raise" && ev.type === "special" && ev.level <= 4);
+    var difficult = pressure > 0 || G.pot >= 16 || opts.length >= 4 || action === "half" || action === "pass";
+    var min = obvious ? 2400 : difficult ? 5200 : 3600;
+    var max = obvious ? 3900 : difficult ? 7900 : 5900;
+    if (isOpeningRound && action === "call") { min -= 350; max -= 350; }
+    if (p.aiStyle && p.aiStyle.kind === "aggressive") { min -= 250; max -= 250; }
+    if (p.aiStyle && p.aiStyle.kind === "conservative") { min += 300; max += 300; }
+    return Math.max(1800, min + Math.floor(Math.random() * Math.max(1, max - min + 1)));
+  }
   function getAction(p, opts, isOpeningRound) {
-    if (p.isHuman && !G.autoManaged) return new Promise(function (resolve) { G.actionResolve = resolve; G._humanOpts = opts; showActions(true, opts, isOpeningRound); startTimer(isOpeningRound); });
-    // 让 AI 保持一段可感知的思考时间，行动节奏更接近真人。
-    var thinkTime = 5000 + Math.floor(Math.random() * 3001);
+    if (p.isHuman && !G.autoManaged) return new Promise(function (resolve) {
+      if (window.GAME_AUDIO) { window.GAME_AUDIO.resetCountdown(); window.GAME_AUDIO.cue("turn"); }
+      G.actionResolve = resolve; G._humanOpts = opts; showActions(true, opts, isOpeningRound); startTimer(isOpeningRound);
+    });
+    // AI先形成决定，再按难度决定思考时长：明确强弱牌更果断，边缘牌和高压局面更慢。
+    var plannedAction;
+    if (opts.indexOf("blindcall") >= 0 && !p.hasLooked && Math.random() < .38) plannedAction = "blindcall";
+    else {
+      p.hasLooked = true;
+      plannedAction = aiDecide(p, opts, isOpeningRound);
+    }
+    var thinkTime = aiThinkTime(p, plannedAction, opts, isOpeningRound);
     startSeatTimer(30);
     return delay(thinkTime).then(function () {
       stopSeatTimer();
-      // 蒙吃底注必须在看牌前决定；AI 是否跟蒙只由随机数决定。
-      if (opts.indexOf("blindcall") >= 0 && !p.hasLooked && Math.random() < .38) return "blindcall";
-      p.hasLooked = true;
-      return aiDecide(p, opts, isOpeningRound);
+      return plannedAction;
     });
   }
 
@@ -894,6 +1096,7 @@
     startSeatTimer(duration);
     G.timerHandle = setInterval(function () {
       left -= 0.1;
+      if (window.GAME_AUDIO) window.GAME_AUDIO.tick(left);
       if (left <= 5) t.classList.add("warn"); else t.classList.remove("warn");
       bar.style.width = Math.max(0, (left / duration * 100)) + "%";
       txt.textContent = Math.ceil(left) + "s";
@@ -919,6 +1122,7 @@
   function stopTimer() {
     if (G.timerHandle) { clearInterval(G.timerHandle); G.timerHandle = null; }
     stopSeatTimer();
+    if (window.GAME_AUDIO) window.GAME_AUDIO.resetCountdown();
     $("timer").classList.add("hidden");
   }
 
@@ -929,12 +1133,19 @@
       return !p.out && !p.folded;
     });
     $("hint").textContent = "";
+    showShowdownCallout("准备比牌");
     if (G.lastSeatThresholdFailed) {
       G.winner = null; G.tiePlayers = [];
+      showShowdownCallout("未达到获胜门槛 · 公池结转");
       return;
     }
     if (contenders.length === 1) {
-      contenders[0].revealed = true; renderAll();
+      contenders[0].revealed = true; G.revealingPlayer = contenders[0]; renderAll();
+      if (window.GAME_AUDIO) window.GAME_AUDIO.play("flip");
+      showShowdownCallout(contenders[0].name + " · " + E.handDesc(E.evaluate(contenders[0].hand[0], contenders[0].hand[1])));
+      await delay(900);
+      if (!isCurrentSession(session)) return;
+      G.revealingPlayer = null; renderAll();
       if (!G.lastSeatThresholdDirectWin) log("其余玩家均已弃牌，<b>" + contenders[0].name + "</b> 直接获胜。");
       G.winner = contenders[0]; G.tiePlayers = null; return;
     }
@@ -948,11 +1159,14 @@
     for (var k = 0; k < contenders.length; k++) {
       if (!isCurrentSession(session)) return;
       var p = contenders[k];
-      p.revealed = true; renderAll();
+      p.revealed = true; G.revealingPlayer = p; renderAll();
+      if (window.GAME_AUDIO) window.GAME_AUDIO.play("flip");
       var ev = E.evaluate(p.hand[0], p.hand[1]);
+      showShowdownCallout(p.name + " 揭牌 · " + E.handDesc(ev));
       log("<b>" + p.name + "</b> 揭牌 → " + E.handDesc(ev));
-      await delay(650);
+      await delay(950);
       if (!isCurrentSession(session)) return;
+      G.revealingPlayer = null; renderAll();
     }
     var best = contenders[0], tie = false;
     for (var i = 1; i < contenders.length; i++) {
@@ -966,12 +1180,17 @@
       G.tiePlayers = contenders.filter(function (c) {
         return E.compareHands(E.evaluate(c.hand[0], c.hand[1]), E.evaluate(best.hand[0], best.hand[1])) === 0;
       });
-    } else { G.winner = best; G.tiePlayers = null; }
+      showShowdownCallout("牌型相同 · 本局平局");
+    } else {
+      G.winner = best; G.tiePlayers = null;
+      showShowdownCallout(best.name + " 牌型领先", true);
+    }
   }
 
   /* ---------- 结算 ---------- */
   async function settlePhase(session) {
     var banner = $("result-banner");
+    var finalPot = G.pot;
     G.matchFinished = G.matchMode === "rounds" ? G.round >= G.maxRounds : Date.now() >= G.endAt;
     var nextLabel = G.matchFinished ? "结束牌局" : "下一局";
     if (G.winner) {
@@ -980,7 +1199,9 @@
       var prize = G.lastSeatThresholdDirectWin ? G.pot : Math.min(G.pot, w.winCap * 2), remainder = G.pot - prize;
       // 先明确胜者、保留公池数字，再把金币从桌心发向胜者。
       w.isWinner = true; renderAll();
-      await delay(40);
+      if (window.GAME_AUDIO) window.GAME_AUDIO.cue("win");
+      showShowdownCallout("胜者 " + w.name + " · 赢得 " + prize + " 积分", true);
+      await delay(900);
       await sendPotToWinner(w, prize);
       if (session != null && !isCurrentSession(session)) return;
       w.chips += prize;
@@ -991,11 +1212,13 @@
         (remainder > 0 ? "　公池结转 <b>" + remainder + "</b> 积分" : "") + "　<button class='next-btn' id='next-btn'>" + nextLabel + "</button>";
       G.pot = remainder;
       G.dealer = G.players.indexOf(w);
+      captureRoundReview(w, prize, finalPot);
     } else {
       log("<b class='hl'>平局！</b> 所有投入 <b>" + G.pot + "</b> 积分全部结转下一局公池。", "hl");
       banner.className = "result-banner tie";
       banner.innerHTML = "平局：无人收益，公池 <b>" + G.pot + "</b> 结转下一局　<button class='next-btn' id='next-btn'>" + nextLabel + "</button>";
       G.dealer = (G.dealer + 1) % G.n;
+      captureRoundReview(null, 0, finalPot);
     }
     renderAll();
     renderMatchRanking();
@@ -1137,13 +1360,18 @@
     if (!candidates.length) return null;
 
     /* 用户风格覆盖层：
-       1) 多人首轮的7、8点优先用一个底注低成本取得比牌权；
-       2) 多人局普通5点面对已吃底注者直接弃；6、7、8点只拿底注；
+       1) 基础牌力打法适用于所有人数；只有场上5人以上才额外走多人谨慎策略；
+       2) 普通5点面对已吃底注者直接弃；6、7、8点只拿底注；
        3) 9点在前家只吃底注时主动吃桌面施压，前家已吃桌面时先用半池；
        4) Q8、Q7等中档特殊牌首轮敢吃桌面，但被反加立即等待；最低特殊牌按压力和公池分层；
        5) 5人以上Q9比Q8更主动；Q8采用“甩钩子后反加”，红8对子按人数在直接施压与甩钩子间分流；
-       6) 当前只剩两人时会用9点主动吃桌面；先手可用0—3点诈唬，但多人局残局会降频。 */
-    if (isFirstTurn && context.alive >= 3 && ev.type === "normal") {
+       6) 二人局保留9点90%主动吃桌面，以及先手0—3点诈唬的专属比例。 */
+    if (isFirstTurn && context.alive === 2 && ev.type === "normal" && point >= 9 && has("raise")) {
+      // 已确认的二人局专属规则：9点及以上九成直接吃桌面，剩余一成用底注隐藏。
+      if (Math.random() < .90) return "raise";
+      if (has("call")) return "call";
+    }
+    if (isFirstTurn && context.alive >= 2 && ev.type === "normal") {
       if (point <= 5 && someoneUsedBottom && has("fold")) return "fold";
       if ((point === 6 || point === 7 || point === 8) && has("call")) return "call";
       if (point === 9) {
@@ -1154,7 +1382,7 @@
         if (context.pressure === 0 && has("raise")) return "raise";
       }
     }
-    if (isFirstTurn && context.alive >= 3 && ev.type === "special") {
+    if (isFirstTurn && context.alive >= 2 && ev.type === "special") {
       // 红8对子在5人以上可二选一：人数越多越倾向甩钩子；8人时正好是60%施压、40%甩钩子。
       if (context.alive >= 5 && ev.level === 4 && context.pressure === 0 && someoneUsedBottom && has("raise") && has("call")) {
         var redEightRaiseChance = Math.max(.60, Math.min(.70, .80 - context.alive * .025));
@@ -1188,7 +1416,6 @@
       // Q9、Q8、Q7均按中档特殊牌处理：首轮直接抬价给后家压力。
       if (ev.level >= 8 && ev.level <= 11 && has("raise")) return "raise";
     }
-    if (isFirstTurn && context.alive === 2 && point >= 9 && has("raise") && Math.random() < .90) return "raise";
     // 真正两人局的弱牌诈唬率为68%；多人局打到只剩两人时，原始人数越多越谨慎。
     // 任一存活玩家已经吃过底注，说明对方已有低成本比牌权，弱牌不再诈唬。
     if (context.alive === 2 && context.isFirstActor && context.pressure === 0 && ev.type === "normal" && point <= 3 && has("raise") && !p.bluffUsed) {
@@ -1204,24 +1431,49 @@
       // 这里不能只看本轮压力：新一轮开始会重置本轮计数，但前一轮的抬价仍然有效。
       var hookHand = ev.type === "special" && (ev.level === 8 || ev.level === 9 || ev.level === 4);
       if (hookHand && p.hookPlan && p.usedBottom && p.tableRaiseCount === 0 && anotherPlayerRaised && has("raise")) return "raise";
-      if (context.pressure <= 0) {
-        // 未出现新的抬价时，继续进入通用收益评分。
-      } else {
-      // 普通牌不连续追价；Q9、Q8、Q7等中档特殊牌同样在被反加后止损。
-      if (ev.type !== "special") return "pass";
-      if (ev.level >= 8) return "pass";
-      // 最大特殊牌绝对领先，可以无限吃桌面。
-      if (ev.level === 1 && has("raise")) return "raise";
-      // 其余特殊牌没有固定追注次数。等级、AI性格、已追次数、公池和人数共同影响继续概率。
-      var style = p.aiStyle || { aggression: 1, risk: 1, bluff: 1 };
-      var specialStrength = (16 - ev.level) / 15;
-      var continueChance = .13 + specialStrength * .82;
-      continueChance += (style.aggression - 1) * .34 + (style.risk - 1) * .30;
-      continueChance -= Math.max(0, p.tableRaiseCount - 1) * (.12 + (1 - specialStrength) * .12);
-      continueChance -= Math.max(0, context.alive - 2) * .045;
-      continueChance -= Math.log(Math.max(2, G.pot)) / Math.log(2) * .012;
-      continueChance = Math.max(.03, Math.min(.94, continueChance));
-      return has("raise") && Math.random() < continueChance ? "raise" : "pass";
+      // 普通牌严禁连续吃桌面：自己已经抬过价，或其他玩家已经抬价后，统一等待比牌。
+      // 这样普通8点吃过底注后不会因为进入新一轮而再次被通用评分驱动去抬价。
+      if (ev.type === "normal" && (p.tableRaiseCount >= 1 || anotherPlayerRaised)) return "pass";
+      // 特殊牌的次数上限每次轮到AI都先检查，不能因新一轮开始而绕过。
+      if (ev.type === "special" && ev.level >= 11 && p.tableRaiseCount >= 1) return "pass";
+      if (ev.type === "special" && ev.level >= 8 && ev.level <= 10 && p.tableRaiseCount >= 2) return "pass";
+      if (ev.type === "special" && ev.level === 7 && p.tableRaiseCount >= 2) return "pass";
+      if (context.pressure > 0 || anotherPlayerRaised) {
+        if (ev.type !== "special") return "pass";
+        // Q7及以下（Q7、27、红8J、红45、黑109）最多吃一次桌面。
+        if (ev.level >= 11) return "pass";
+        // 28、Q8、Q9可视局面吃第二次桌面，但绝不超过两次。
+        if (ev.level >= 8 && ev.level <= 10) {
+          if (p.tableRaiseCount >= 2) return "pass";
+          var middleStyle = p.aiStyle || { aggression: 1, risk: 1 };
+          var middleChance = ev.level === 8 ? .72 : ev.level === 9 ? .62 : .52;
+          middleChance += (middleStyle.aggression - 1) * .24 + (middleStyle.risk - 1) * .20;
+          middleChance -= Math.max(0, context.alive - 2) * .035;
+          middleChance -= Math.log(Math.max(2, G.pot)) / Math.log(2) * .014;
+          middleChance = Math.max(.18, Math.min(.88, middleChance));
+          return has("raise") && Math.random() < middleChance ? "raise" : "pass";
+        }
+        // 普通对子（第7级）通常吃两次桌面，到第二次后止损。
+        if (ev.level === 7) {
+          if (p.tableRaiseCount >= 2) return "pass";
+          var pairStyle = p.aiStyle || { aggression: 1, risk: 1 };
+          var pairChance = .76 + (pairStyle.aggression - 1) * .22 + (pairStyle.risk - 1) * .18;
+          pairChance -= Math.max(0, context.alive - 2) * .03;
+          pairChance = Math.max(.42, Math.min(.92, pairChance));
+          return has("raise") && Math.random() < pairChance ? "raise" : "pass";
+        }
+        // 最大特殊牌绝对领先，可以无限吃桌面。
+        if (ev.level === 1 && has("raise")) return "raise";
+        // 特殊对子（QQ、22、红8/红4/黑10对子）按等级、性格、人数与公池动态决定吃两次、三次或更多。
+        var style = p.aiStyle || { aggression: 1, risk: 1, bluff: 1 };
+        var specialStrength = (16 - ev.level) / 15;
+        var continueChance = .13 + specialStrength * .82;
+        continueChance += (style.aggression - 1) * .34 + (style.risk - 1) * .30;
+        continueChance -= Math.max(0, p.tableRaiseCount - 1) * (.12 + (1 - specialStrength) * .12);
+        continueChance -= Math.max(0, context.alive - 2) * .045;
+        continueChance -= Math.log(Math.max(2, G.pot)) / Math.log(2) * .012;
+        continueChance = Math.max(.03, Math.min(.94, continueChance));
+        return has("raise") && Math.random() < continueChance ? "raise" : "pass";
       }
     }
     var scored = candidates.map(function (action) {
