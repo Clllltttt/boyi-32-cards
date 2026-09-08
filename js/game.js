@@ -468,6 +468,16 @@
   });
 
   /* ---------- 初始化 ---------- */
+  function createAiStyle() {
+    var roll = Math.random();
+    if (roll < 1 / 3) {
+      return { kind: "aggressive", label: "激进型", aggression: 1.16 + Math.random() * .16, risk: 1.12 + Math.random() * .16, bluff: 1.06 + Math.random() * .18 };
+    }
+    if (roll < 2 / 3) {
+      return { kind: "conservative", label: "保守型", aggression: .72 + Math.random() * .14, risk: .70 + Math.random() * .16, bluff: .62 + Math.random() * .16 };
+    }
+    return { kind: "selective", label: "看牌型", aggression: .92 + Math.random() * .16, risk: .88 + Math.random() * .16, bluff: .72 + Math.random() * .16 };
+  }
   function initGame() {
     clearNextRoundCountdown();
     G.n = cfg.n; G.timerOn = cfg.timerOn; G.matchMode = cfg.mode; G.maxRounds = cfg.rounds;
@@ -479,7 +489,9 @@
         hand: [null, null], folded: false, out: false, roundStake: 0,
         lastRaiseRound: 0, revealed: false, lastAction: "", isWinner: false,
         hasBetThisRound: false, hasRaised: false, waitingShowdown: false,
-        usedBottom: false, hasTakenTurn: false, winCap: 1, bluffUsed: false, hasLooked: false, wins: 0
+        usedBottom: false, hasTakenTurn: false, winCap: 1, bluffUsed: false, hookPlan: false, hasLooked: false, wins: 0,
+        tableRaiseCount: 0,
+        aiStyle: i === 0 ? null : createAiStyle()
       });
     }
     G.dealer = -1; G.round = 1; G.pot = 0; G.gameOver = false; G.showdownPlayers = [];
@@ -510,12 +522,12 @@
   }
   async function playRound(session) {
     G.showdownPlayers = []; G.lastSeatThresholdFailed = false; G.lastSeatThresholdDirectWin = false;
-    G.blindTableOpened = false; G.dealerBlindPlanned = ""; G.blindBottomChain = false; G.humanBlindPending = false; G.humanBlind = false;
+    G.blindTableOpened = false; G.dealerBlindPlanned = ""; G.blindBottomChain = false; G.tableRaisesThisRound = 0; G.humanBlindPending = false; G.humanBlind = false;
     G.players.forEach(function (p) {
       p.hand = [null, null]; p.folded = false; p.roundStake = 0;
       p.lastRaiseRound = 0; p.revealed = false; p.lastAction = ""; p.isWinner = false;
       p.hasBetThisRound = false; p.hasRaised = false; p.waitingShowdown = false;
-      p.usedBottom = false; p.hasTakenTurn = false; p.winCap = G.ante; p.bluffUsed = false; p.hasLooked = false;
+      p.usedBottom = false; p.hasTakenTurn = false; p.winCap = G.ante; p.bluffUsed = false; p.hookPlan = false; p.hasLooked = false; p.tableRaiseCount = 0;
     });
     if (G.round === 1) determineDealerFirstRound();
     G.phase = "deal"; renderAll(); await delay(500);
@@ -559,7 +571,8 @@
       // AI 是否蒙吃只由独立随机数决定，不能读取牌面后再决定。
       if (dealerPlayer && !dealerPlayer.isHuman) {
         var blindRoll = Math.random();
-        G.dealerBlindPlanned = blindRoll < .10 ? "blind_table" : blindRoll < .24 ? "blind_bottom" : "";
+        // 用户风格：50%先看牌、30%蒙吃底注、20%蒙吃桌面。
+        G.dealerBlindPlanned = blindRoll < .20 ? "blind_table" : blindRoll < .50 ? "blind_bottom" : "";
       }
       // 非头家可以一直选择看牌，不在发牌后强制打开搓牌层。
     }
@@ -608,6 +621,7 @@
       p.usedBottom = false; p.hasTakenTurn = false;
     });
     var turn = 0, openingPlayers = [], openingHasTableBet = false, openingAllPriorFolded = true;
+    G.tableRaisesThisRound = 0;
     log("<b>首轮下注开始</b>：可选吃桌面、吃一个底注、吃半个公池或弃牌；符合条件的未看牌玩家还可跟蒙底注。");
     // 首轮：每位未出局玩家各行动一次。吃底注和吃桌面都取得第一轮资格。
     for (var i = 0; i < G.n; i++) {
@@ -671,6 +685,7 @@
     while (isCurrentSession(session) && (hasTableBet || baseOnlyPassRound) && qualified.length > 1) {
       round++;
       var nextQualified = [], roundHasBet = false;
+      G.tableRaisesThisRound = 0;
       G.bettingRound = round;
       log("<b>第 " + round + " 轮</b>：继续下注可抬高公池，未弃牌者均保留比牌资格。" );
 
@@ -743,8 +758,10 @@
     queueCoinsToPot(p, bet);
     p.hasBetThisRound = true;
     p.hasRaised = true;
+    p.tableRaiseCount += 1;
     p.lastAction = "蒙吃桌面";
     G.blindTableOpened = true;
+    G.tableRaisesThisRound = (G.tableRaisesThisRound || 0) + 1;
     log("头家 <b>" + p.name + "</b> 蒙吃桌面，下注 <b>" + bet + "</b>，公池 → <b>" + G.pot + "</b>；后续玩家不能吃底注或半池，头家之后可自由看牌。");
     return true;
   }
@@ -766,6 +783,8 @@
       queueCoinsToPot(p, bet);
       p.hasBetThisRound = true;
       p.hasRaised = true;
+      p.tableRaiseCount += 1;
+      G.tableRaisesThisRound = (G.tableRaisesThisRound || 0) + 1;
       p.lastAction = "吃桌面";
       log("<b>" + p.name + "</b> 吃桌面，下注 <b>" + bet + "</b>，公池 → <b>" + G.pot + "</b>。");
       return true;
@@ -1044,40 +1063,187 @@
     if (ev.type === "special") return 100 + (15 - ev.level);
     return ev.point * 10 + ev.mianzi;
   }
-  function aiDecide(p, opts, isFirstTurn) {
+  function aiEquity(p) {
     var ev = E.evaluate(p.hand[0], p.hand[1]);
-    var has = function (k) { return opts.indexOf(k) >= 0; };
-    var r = Math.random();
-    var point = ev.type === "special" ? 10 : ev.point;
-    var bluff = function (action) { p.bluffUsed = true; return action; };
-    var legalFallback = function () {
-      if (has("pass")) return "pass";
-      if (has("raise")) return "raise";
-      if (has("half")) return "half";
-      if (has("call")) return "call";
-      return has("fold") ? "fold" : null;
-    };
-    // 特殊、8、9 点积极；7 点偏保守；0–6 点保留一次小概率诈唬。
-    if (isFirstTurn) {
-      if (point >= 8) return has("raise") && r < 0.68 ? "raise" : (has("half") && r < .88 ? "half" : (has("call") ? "call" : "fold"));
-      if (point === 7) {
-        if (has("raise") && !p.bluffUsed && r < 0.08) return bluff("raise");
-        return has("half") && r < .24 ? "half" : (has("call") ? "call" : "fold");
+    var alive = G.players.filter(function (q) { return !q.out && !q.folded && q !== p; }).length;
+    var base;
+    if (ev.type === "special") base = Math.max(.72, .965 - ev.level * .016);
+    else {
+      var pointBase = [.18, .22, .26, .30, .35, .40, .47, .60, .78, .90];
+      base = pointBase[ev.point] + Math.min(.035, (ev.mianzi || 0) * .006);
+    }
+    // 对手越多，当前牌同时击败所有人的概率越低；只使用人数，不读取对手手牌。
+    return Math.max(.025, Math.min(.98, Math.pow(base, 1 + Math.max(0, alive - 1) * .22)));
+  }
+  function aiActiveOrder() {
+    return G.players.filter(function (q) { return !q.out && !q.folded; }).sort(function (a, b) {
+      var aSeat = G.players.indexOf(a), bSeat = G.players.indexOf(b);
+      return ((aSeat - G.dealer + G.n) % G.n) - ((bSeat - G.dealer + G.n) % G.n);
+    });
+  }
+  function aiPositionRatio(p) {
+    var active = aiActiveOrder();
+    if (active.length <= 1) return 0;
+    return active.indexOf(p) / Math.max(1, active.length - 1);
+  }
+  function aiActionValue(p, action, equity, context) {
+    if (action === "fold") return 0;
+    if (action === "pass") {
+      var heldPrize = Math.min(G.pot, Math.max(G.ante, p.winCap) * 2);
+      return equity * heldPrize + .08;
+    }
+    var cost = action === "raise" ? G.pot : action === "half" ? Math.ceil(G.pot / 2) : G.ante;
+    var finalPot = G.pot + cost;
+    var maxPrize = Math.min(finalPot, cost * 2);
+    var value = equity * maxPrize - cost;
+    // 连续抬价、多人仍在场和靠前位置都会提高继续投入的风险。
+    if (action === "raise") {
+      value -= cost * (context.pressure * .055 + Math.max(0, context.alive - 2) * .025);
+      value += cost * context.position * .055;
+    } else if (action === "half") {
+      value -= cost * (context.pressure * .028 + Math.max(0, context.alive - 3) * .015);
+      value += cost * context.position * .03;
+    } else value += cost * context.position * .018;
+    // 每场随机人格只调整不在固定打法覆盖内的边缘决策。
+    var style = p.aiStyle;
+    if (style) {
+      var isPressureAction = action === "raise" || action === "half";
+      if (style.kind === "aggressive" && isPressureAction) value += cost * .16;
+      if (style.kind === "conservative" && isPressureAction) value -= cost * .16;
+      if (style.kind === "selective" && isPressureAction) {
+        if (equity >= .70) value += cost * .20;
+        else if (equity < .52) value -= cost * .22;
       }
-      if (!p.bluffUsed && has("raise") && r < 0.06) return bluff("raise");
-      if (!p.bluffUsed && has("call") && r < 0.28) return bluff("call");
-      return "fold";
     }
-    if (point >= 8) return has("raise") && r < 0.72 ? "raise" : legalFallback();
-    if (point === 7) {
-      if (has("pass") && r < 0.80) return "pass";
-      if (has("raise") && r < 0.14) return "raise";
-      return has("fold") ? "fold" : legalFallback();
+    // 小幅扰动只负责打破固定套路，不足以长期覆盖明显亏损的决策。
+    value += (Math.random() - .5) * Math.max(.12, cost * .10);
+    return value;
+  }
+  function aiDecide(p, opts, isFirstTurn) {
+    var has = function (k) { return opts.indexOf(k) >= 0; };
+    var ev = E.evaluate(p.hand[0], p.hand[1]);
+    var point = ev.type === "special" ? 10 : ev.point;
+    var equity = aiEquity(p);
+    var activeOrder = aiActiveOrder();
+    var context = {
+      alive: activeOrder.length,
+      position: aiPositionRatio(p),
+      isFirstActor: activeOrder[0] === p,
+      pressure: G.tableRaisesThisRound || 0
+    };
+    var someoneUsedBottom = activeOrder.some(function (q) { return q !== p && q.usedBottom; });
+    var anotherPlayerRaised = activeOrder.some(function (q) { return q !== p && q.hasRaised; });
+    var candidates = ["raise", "half", "call", "pass", "fold"].filter(has);
+    if (!candidates.length) return null;
+
+    /* 用户风格覆盖层：
+       1) 多人首轮的7、8点优先用一个底注低成本取得比牌权；
+       2) 多人局普通5点面对已吃底注者直接弃；6、7、8点只拿底注；
+       3) 9点在前家只吃底注时主动吃桌面施压，前家已吃桌面时先用半池；
+       4) Q8、Q7等中档特殊牌首轮敢吃桌面，但被反加立即等待；最低特殊牌按压力和公池分层；
+       5) 5人以上Q9比Q8更主动；Q8采用“甩钩子后反加”，红8对子按人数在直接施压与甩钩子间分流；
+       6) 当前只剩两人时会用9点主动吃桌面；先手可用0—3点诈唬，但多人局残局会降频。 */
+    if (isFirstTurn && context.alive >= 3 && ev.type === "normal") {
+      if (point <= 5 && someoneUsedBottom && has("fold")) return "fold";
+      if ((point === 6 || point === 7 || point === 8) && has("call")) return "call";
+      if (point === 9) {
+        // 场上5人以上，9点不在首轮过早亮出攻击性，先低成本拿资格。
+        if (context.alive >= 5 && has("call")) return "call";
+        // 前家已吃桌面代表实力信号，9点先半池控风险；只有底注信号时则满注施压后家。
+        if (context.pressure > 0 && G.pot <= 16 && has("half")) return "half";
+        if (context.pressure === 0 && has("raise")) return "raise";
+      }
     }
-    if (!p.bluffUsed && has("raise") && r < 0.08) return bluff("raise");
-    // 弱牌偶尔等待比牌，既保留博弈感，也不会持续抬高公池。
-    if (has("pass") && r < 0.35) return "pass";
-    return has("fold") ? "fold" : legalFallback();
+    if (isFirstTurn && context.alive >= 3 && ev.type === "special") {
+      // 红8对子在5人以上可二选一：人数越多越倾向甩钩子；8人时正好是60%施压、40%甩钩子。
+      if (context.alive >= 5 && ev.level === 4 && context.pressure === 0 && someoneUsedBottom && has("raise") && has("call")) {
+        var redEightRaiseChance = Math.max(.60, Math.min(.70, .80 - context.alive * .025));
+        if (Math.random() < redEightRaiseChance) return "raise";
+        p.hookPlan = true;
+        return "call";
+      }
+      // 场上5人以上的Q9：比Q8更主动，60%直接施压，40%甩钩子后反加。
+      if (context.alive >= 5 && ev.level === 8 && context.pressure === 0 && has("raise") && has("call")) {
+        if (Math.random() < .60) return "raise";
+        p.hookPlan = true;
+        return "call";
+      }
+      // 场上5人以上的Q8：首轮只吃底注甩钩子；有人抬价后在下一次轮到自己时反加。
+      if (context.alive >= 5 && ev.level === 9 && context.pressure === 0 && has("call")) {
+        p.hookPlan = true;
+        return "call";
+      }
+      if (ev.level === 15) {
+        if (context.pressure === 0 && has("raise")) return "raise";
+        if (context.pressure > 0 && G.pot < 16 && has("half")) return "half";
+        if (context.pressure > 0 && G.pot >= 48 && has("call")) return "call";
+        // 16—47分的吃桌面压力区：激进AI偏半池，稳健AI偏底注。
+        if (context.pressure > 0) {
+          var lowSpecialStyle = p.aiStyle || { aggression: 1, risk: 1 };
+          var halfChance = .50 + (lowSpecialStyle.risk - 1) * .70 + (lowSpecialStyle.aggression - 1) * .30;
+          halfChance = Math.max(.30, Math.min(.65, halfChance));
+          return has("half") && Math.random() < halfChance ? "half" : has("call") ? "call" : candidates[0];
+        }
+      }
+      // Q9、Q8、Q7均按中档特殊牌处理：首轮直接抬价给后家压力。
+      if (ev.level >= 8 && ev.level <= 11 && has("raise")) return "raise";
+    }
+    if (isFirstTurn && context.alive === 2 && point >= 9 && has("raise") && Math.random() < .90) return "raise";
+    // 真正两人局的弱牌诈唬率为68%；多人局打到只剩两人时，原始人数越多越谨慎。
+    // 任一存活玩家已经吃过底注，说明对方已有低成本比牌权，弱牌不再诈唬。
+    if (context.alive === 2 && context.isFirstActor && context.pressure === 0 && ev.type === "normal" && point <= 3 && has("raise") && !p.bluffUsed) {
+      var headsUpBluffChance = someoneUsedBottom ? 0 : .68 * Math.min(1, 2 / G.n);
+      if (Math.random() < headsUpBluffChance) {
+        p.bluffUsed = true;
+        return "raise";
+      }
+      return has("fold") ? "fold" : has("pass") ? "pass" : candidates[0];
+    }
+    if (!isFirstTurn && has("pass")) {
+      // 选择甩钩子的Q9/Q8/红8对子：只要其他玩家已吃桌面，就立即反加一次。
+      // 这里不能只看本轮压力：新一轮开始会重置本轮计数，但前一轮的抬价仍然有效。
+      var hookHand = ev.type === "special" && (ev.level === 8 || ev.level === 9 || ev.level === 4);
+      if (hookHand && p.hookPlan && p.usedBottom && p.tableRaiseCount === 0 && anotherPlayerRaised && has("raise")) return "raise";
+      if (context.pressure <= 0) {
+        // 未出现新的抬价时，继续进入通用收益评分。
+      } else {
+      // 普通牌不连续追价；Q9、Q8、Q7等中档特殊牌同样在被反加后止损。
+      if (ev.type !== "special") return "pass";
+      if (ev.level >= 8) return "pass";
+      // 最大特殊牌绝对领先，可以无限吃桌面。
+      if (ev.level === 1 && has("raise")) return "raise";
+      // 其余特殊牌没有固定追注次数。等级、AI性格、已追次数、公池和人数共同影响继续概率。
+      var style = p.aiStyle || { aggression: 1, risk: 1, bluff: 1 };
+      var specialStrength = (16 - ev.level) / 15;
+      var continueChance = .13 + specialStrength * .82;
+      continueChance += (style.aggression - 1) * .34 + (style.risk - 1) * .30;
+      continueChance -= Math.max(0, p.tableRaiseCount - 1) * (.12 + (1 - specialStrength) * .12);
+      continueChance -= Math.max(0, context.alive - 2) * .045;
+      continueChance -= Math.log(Math.max(2, G.pot)) / Math.log(2) * .012;
+      continueChance = Math.max(.03, Math.min(.94, continueChance));
+      return has("raise") && Math.random() < continueChance ? "raise" : "pass";
+      }
+    }
+    var scored = candidates.map(function (action) {
+      return { action: action, value: aiActionValue(p, action, equity, context) };
+    });
+
+    // 弱牌仍保留有条件的诈唬：人数少、位置靠后、抬价压力低时才可能触发。
+    var styleForBluff = p.aiStyle || { bluff: 1 };
+    var bluffChance = !p.bluffUsed && equity < .44
+      ? Math.max(0, (.025 + context.position * .075 - Math.max(0, context.alive - 2) * .012 - context.pressure * .018) * styleForBluff.bluff)
+      : 0;
+    if (Math.random() < bluffChance) {
+      var bluffAction = has("half") ? "half" : has("call") ? "call" : has("raise") ? "raise" : null;
+      if (bluffAction) {
+        p.bluffUsed = true;
+        return bluffAction;
+      }
+    }
+    scored.sort(function (a, b) { return b.value - a.value; });
+    // 两个方案收益接近时偶尔选择次优项，使行为不机械。
+    if (scored.length > 1 && scored[0].value - scored[1].value < .16 && Math.random() < .22) return scored[1].action;
+    return scored[0].action;
   }
 
   renderAll();
